@@ -137,12 +137,12 @@ async function handleGetCategoryBySlug(slug) {
 async function handleGetProducts(searchParams) {
   let query = supabase
     .from('products')
-    .select(\`
+    .select(`
       *,
       category:categories(id, name, slug),
       images:product_images(id, image_url, sort_order),
       variants:product_variants(id, variant_type, variant_value, stock, price_modifier)
-    \`)
+    `)
   
   // Filters
   if (searchParams.category) {
@@ -217,7 +217,7 @@ async function handleGetProducts(searchParams) {
 async function handleGetProductBySlug(slug) {
   const { data, error } = await supabase
     .from('products')
-    .select(\`
+    .select(`
       *,
       category:categories(id, name, slug),
       images:product_images(id, image_url, sort_order),
@@ -229,7 +229,7 @@ async function handleGetProductBySlug(slug) {
         created_at,
         user:profiles(full_name)
       )
-    \`)
+    `)
     .eq('slug', slug)
     .single()
   
@@ -256,7 +256,7 @@ async function handleGetCart(request) {
   
   const { data, error } = await supabase
     .from('cart_items')
-    .select(\`
+    .select(`
       *,
       product:products(
         id,
@@ -274,7 +274,7 @@ async function handleGetCart(request) {
         stock,
         price_modifier
       )
-    \`)
+    `)
     .eq('user_id', user.id)
   
   if (error) throw error
@@ -384,7 +384,7 @@ async function handleGetWishlist(request) {
   
   const { data, error } = await supabase
     .from('wishlists')
-    .select(\`
+    .select(`
       *,
       product:products(
         id,
@@ -394,7 +394,7 @@ async function handleGetWishlist(request) {
         discount_price,
         images:product_images(image_url)
       )
-    \`)
+    `)
     .eq('user_id', user.id)
   
   if (error) throw error
@@ -447,10 +447,10 @@ async function handleGetOrders(request) {
   
   const { data, error } = await supabase
     .from('orders')
-    .select(\`
+    .select(`
       *,
       items:order_items(*)
-    \`)
+    `)
     .eq('user_id', user.id)
     .order('created_at', { ascending: false })
   
@@ -464,10 +464,10 @@ async function handleGetOrderById(request, orderId) {
   
   const { data, error } = await supabase
     .from('orders')
-    .select(\`
+    .select(`
       *,
       items:order_items(*)
-    \`)
+    `)
     .eq('id', orderId)
     .eq('user_id', user.id)
     .single()
@@ -485,11 +485,11 @@ async function handleCreateOrder(request, body) {
   // Get cart items
   const { data: cartItems } = await supabase
     .from('cart_items')
-    .select(\`
+    .select(`
       *,
       product:products(*),
       variant:product_variants(*)
-    \`)
+    `)
     .eq('user_id', user.id)
   
   if (!cartItems || cartItems.length === 0) {
@@ -520,11 +520,11 @@ async function handleCreateOrder(request, body) {
     // Check stock
     if (item.variant) {
       if (item.variant.stock < item.quantity) {
-        throw new Error(\`Insufficient stock for \${item.product.name}\`)
+        throw new Error(`Insufficient stock for \${item.product.name}`)
       }
     } else {
       if (item.product.stock_quantity < item.quantity) {
-        throw new Error(\`Insufficient stock for \${item.product.name}\`)
+        throw new Error(`Insufficient stock for \${item.product.name}`)
       }
     }
   }
@@ -802,12 +802,12 @@ async function handleAdminGetProducts(request) {
   
   const { data, error } = await supabase
     .from('products')
-    .select(\`
+    .select(`
       *,
       category:categories(name),
       images:product_images(*),
       variants:product_variants(*)
-    \`)
+    `)
     .order('created_at', { ascending: false })
   
   if (error) throw error
@@ -912,11 +912,11 @@ async function handleAdminGetOrders(request) {
   
   const { data, error } = await supabase
     .from('orders')
-    .select(\`
+    .select(`
       *,
       user:profiles(full_name, email, phone),
       items:order_items(*)
-    \`)
+    `)
     .order('created_at', { ascending: false })
   
   if (error) throw error
@@ -1005,7 +1005,7 @@ async function handleValidateCoupon(body) {
   }
   
   if (total_amount < (data.min_order_amount || 0)) {
-    throw new Error(\`Minimum order amount is ₹\${data.min_order_amount}\`)
+    throw new Error(`Minimum order amount is ₹\${data.min_order_amount}`)
   }
   
   let discount = 0
