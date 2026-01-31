@@ -178,7 +178,7 @@ async function handleGetProducts(searchParams) {
   }
   
   if (searchParams.search) {
-    query = query.or(\`name.ilike.%\${searchParams.search}%,description.ilike.%\${searchParams.search}%\`)
+    query = query.or(`name.ilike.%${searchParams.search}%,description.ilike.%${searchParams.search}%`)
   }
   
   // Sorting
