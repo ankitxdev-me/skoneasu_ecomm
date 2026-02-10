@@ -2,6 +2,7 @@ import { Inter, Playfair_Display } from "next/font/google"
 import "./globals.css"
 import { AuthProvider } from "@/contexts/AuthContext"
 import { CartProvider } from "@/contexts/CartContext"
+import { WishlistProvider } from "@/contexts/WishlistContext"
 import { Toaster } from "sonner"
 
 const inter = Inter({
@@ -15,9 +16,9 @@ const playfair = Playfair_Display({
 })
 
 export const metadata = {
-  title: "Luxury Jewelry - Premium Diamond & Gemstone Collection",
-  description: "Discover our exquisite collection of handcrafted luxury jewelry. Premium diamonds, precious gemstones, and timeless designs.",
-  keywords: "luxury jewelry, diamond rings, gemstone necklaces, premium jewelry, engagement rings",
+  title: "Skoneasu - For You Only",
+  description: "Discover our exquisite collection of handcrafted luxury jewelry. Skoneasu - For you only.",
+  keywords: "skoneasu, luxury jewelry, diamond rings, gemstone necklaces, premium jewelry, engagement rings",
 }
 
 export default function RootLayout({ children }) {
@@ -25,10 +26,12 @@ export default function RootLayout({ children }) {
     <html lang="en">
       <body className={`${inter.variable} ${playfair.variable} antialiased`}>
         <AuthProvider>
-          <CartProvider>
-            {children}
-            <Toaster position="top-right" richColors />
-          </CartProvider>
+          <WishlistProvider>
+            <CartProvider>
+              {children}
+              <Toaster position="top-right" richColors />
+            </CartProvider>
+          </WishlistProvider>
         </AuthProvider>
       </body>
     </html>

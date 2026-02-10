@@ -1,0 +1,36 @@
+Role Distribution: {
+  "admin": 1,
+  "user": 3
+}
+
+Sample Admins:
+[
+  {
+    "id": "0d0a9811-026e-4cc4-babb-65c2ea7c448a",
+    "full_name": "Ankit Gupta",
+    "email": "ankitgupta72724@gmail.com",
+    "role": "admin"
+  }
+]
+
+Sample Non-Admins:
+[
+  {
+    "id": "955593bf-94ee-46c0-94b9-cd3665a42137",
+    "full_name": "Ankit Gupta",
+    "email": "ankitgghbfbcjupta72724@gmail.com",
+    "role": "user"
+  },
+  {
+    "id": "5c835f34-8558-4f05-8197-31c3fd5053be",
+    "full_name": "Ankit Gupta",
+    "email": "ankitgghjupta72724@gmail.com",
+    "role": "user"
+  },
+  {
+    "id": "2bdb491b-e78d-48e1-a6d5-9e2ec83ff07d",
+    "full_name": "Neha",
+    "email": "nehagupt386@gmail.com",
+    "role": "user"
+  }
+]

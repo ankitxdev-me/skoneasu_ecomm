@@ -6,7 +6,7 @@ import { createRazorpayOrder, verifyPaymentSignature } from '@/lib/razorpay'
 async function getAuthUser(request) {
   const token = request.headers.get('authorization')?.replace('Bearer ', '')
   if (!token) return null
-  
+
   const { data: { user }, error } = await supabase.auth.getUser(token)
   if (error) return null
   return user
@@ -19,7 +19,7 @@ async function isAdmin(userId) {
     .select('role')
     .eq('id', userId)
     .single()
-  
+
   return data?.role === 'admin'
 }
 
@@ -27,69 +27,71 @@ async function isAdmin(userId) {
 
 async function handleSignUp(body) {
   const { email, password, full_name, phone } = body
-  
+
   const { data: authData, error: authError } = await supabase.auth.signUp({
     email,
     password,
   })
-  
+
   if (authError) throw authError
-  
-  // Create profile
+
+  // Create or Update profile (upsert matches on id)
   const { error: profileError } = await supabase
     .from('profiles')
-    .insert({
+    .upsert({
       id: authData.user.id,
+      email,
       full_name,
       phone,
-      role: 'user'
+      role: 'user',
+      updated_at: new Date().toISOString()
     })
-  
+
   if (profileError) throw profileError
-  
+
   return { user: authData.user, session: authData.session }
 }
 
 async function handleSignIn(body) {
   const { email, password } = body
-  
+
   const { data, error } = await supabase.auth.signInWithPassword({
     email,
     password,
   })
-  
+
   if (error) throw error
-  
+
   // Get profile
   const { data: profile } = await supabase
     .from('profiles')
     .select('*')
     .eq('id', data.user.id)
     .single()
-  
+
   return { user: data.user, session: data.session, profile }
 }
 
 async function handleSignOut(request) {
   const token = request.headers.get('authorization')?.replace('Bearer ', '')
   if (!token) throw new Error('No auth token')
-  
+
   const { error } = await supabase.auth.signOut(token)
   if (error) throw error
-  
+
   return { message: 'Signed out successfully' }
 }
 
 async function handleGetProfile(request) {
   const user = await getAuthUser(request)
   if (!user) throw new Error('Unauthorized')
-  
+
   const { data, error } = await supabase
     .from('profiles')
     .select('*')
     .eq('id', user.id)
     .single()
-  
+
   if (error) throw error
   return data
 }
@@ -97,14 +99,14 @@ async function handleGetProfile(request) {
 async function handleUpdateProfile(request, body) {
   const user = await getAuthUser(request)
   if (!user) throw new Error('Unauthorized')
-  
+
   const { data, error } = await supabase
     .from('profiles')
     .update(body)
     .eq('id', user.id)
     .select()
     .single()
-  
+
   if (error) throw error
   return data
 }
@@ -116,7 +118,7 @@ async function handleGetCategories() {
     .from('categories')
     .select('*')
     .order('name')
-  
+
   if (error) throw error
   return data
 }
@@ -127,7 +129,7 @@ async function handleGetCategoryBySlug(slug) {
     .select('*')
     .eq('slug', slug)
     .single()
-  
+
   if (error) throw error
   return data
 }
@@ -135,15 +137,27 @@ async function handleGetCategoryBySlug(slug) {
 // ============ PRODUCT ENDPOINTS ============
 
 async function handleGetProducts(searchParams) {
-  let query = supabase
-    .from('products')
-    .select(`
+  let selectQuery = `
+    *,
+    categories:product_categories(category:categories(id, name, slug)),
+    images:product_images(id, image_url, sort_order),
+    variants:product_variants(id, variant_type, variant_value, stock, price_modifier)
+  `
+
+  // Use !inner for category filtering to filter products by related category
+  if (searchParams.category) {
+    selectQuery = `
       *,
-      category:categories(id, name, slug),
+      categories:product_categories!inner(category:categories(id, name, slug), category_id),
       images:product_images(id, image_url, sort_order),
       variants:product_variants(id, variant_type, variant_value, stock, price_modifier)
-    `)
-  
+    `
+  }
+
+  let query = supabase
+    .from('products')
+    .select(selectQuery)
+
   // Filters
   if (searchParams.category) {
     const { data: category } = await supabase
@@ -151,36 +165,36 @@ async function handleGetProducts(searchParams) {
       .select('id')
       .eq('slug', searchParams.category)
       .single()
-    
+
     if (category) {
-      query = query.eq('category_id', category.id)
+      query = query.eq('categories.category_id', category.id)
     }
   }
-  
+
   if (searchParams.featured === 'true') {
     query = query.eq('featured', true)
   }
-  
+
   if (searchParams.best_seller === 'true') {
     query = query.eq('best_seller', true)
   }
-  
+
   if (searchParams.new_arrival === 'true') {
     query = query.eq('new_arrival', true)
   }
-  
+
   if (searchParams.min_price) {
     query = query.gte('price', parseFloat(searchParams.min_price))
   }
-  
+
   if (searchParams.max_price) {
     query = query.lte('price', parseFloat(searchParams.max_price))
   }
-  
+
   if (searchParams.search) {
     query = query.or(`name.ilike.%${searchParams.search}%,description.ilike.%${searchParams.search}%`)
   }
-  
+
   // Sorting
   if (searchParams.sort === 'price_asc') {
     query = query.order('price', { ascending: true })
@@ -191,25 +205,99 @@ async function handleGetProducts(searchParams) {
   } else {
     query = query.order('created_at', { ascending: false })
   }
-  
+
   // Pagination
   const page = parseInt(searchParams.page) || 1
   const limit = parseInt(searchParams.limit) || 12
   const from = (page - 1) * limit
   const to = from + limit - 1
-  
+
   query = query.range(from, to)
-  
+
   const { data, error, count } = await query
-  
+
   if (error) throw error
-  
+
+  // Calculate Price Stats (Min/Max) for the current scope (Category)
+  // We do separate small queries to get min/max efficiently
+  let statsQuery = supabase.from('products').select('price')
+
+  // Apply category filter to stats query if present
+  if (searchParams.category) {
+    // We need to use inner join logic for stats too if filtering by category
+    const { data: categoryData } = await supabase
+      .from('categories')
+      .select('id')
+      .eq('slug', searchParams.category)
+      .single()
+
+    if (categoryData && categoryData.id) {
+      // Since we use the product_categories link now, it's complex to filter simply on products table
+      // But we have access to direct category_id in products table as legacy or we need to join
+      // For performance simplicity, let's assume we filter on the products table directly if possible
+      // OR we just get global min/max for now to avoid heavy joins on stats
+      // IMPROVEMENT: Use the same complex logic or just getting global min/max 
+      // User asked "search price", meaning contextual.
+      // Let's try to act on the filtered set.
+
+      // Actually, the joined query above is complex.
+      // Let's do a simpler approach: get global min/max for the scope of "All Products" or "Specific Category" 
+      // Finding min/max with joins is tricky in one go.
+      // Let's just fetch min/max of ALL products for simplicity first, or try to be smart.
+      // If I use the same join logic, it's heavy.
+      // Let's stick to global min/max for the store if no category, and if category is there, try to filter.
+      // Given the migration, products might not have 'category_id' column populated if we removed it, but I didn't remove it.
+      // So I can use 'category_id' column for fast stats if it is still maintained.
+      // But I updated the adding/editing to use the junction table.
+      // So the 'category_id' column on products might be stale or null.
+      // I should rely on the junction table for stats too.
+
+      statsQuery = supabase
+        .from('product_categories')
+        .select(`product:products(price)`)
+        .eq('category_id', categoryData.id)
+    }
+  }
+
+  // To get Min
+  // This is getting complicated to do efficiently in Supabase JS client without a custom RPC or heavy fetching.
+  // Alternative: Just return the min/max of the *current page*? No, that's bad UX.
+  // Alternative: Fetch ALL prices (just the price column) and calculate in JS? 
+  // If 1000 products, it's ~4KB data. Acceptable for now.
+
+  let minPrice = 0
+  let maxPrice = 1000000
+
+  try {
+    let allPricesQuery = supabase.from('products').select('price, product_categories!inner(category_id)')
+
+    if (searchParams.category) {
+      const { data: cat } = await supabase.from('categories').select('id').eq('slug', searchParams.category).single()
+      if (cat) {
+        allPricesQuery = allPricesQuery.eq('product_categories.category_id', cat.id)
+      }
+    }
+
+    const { data: prices } = await allPricesQuery
+    if (prices && prices.length > 0) {
+      const priceValues = prices.map(p => p.price)
+      minPrice = Math.min(...priceValues)
+      maxPrice = Math.max(...priceValues)
+    }
+  } catch (err) {
+    console.error('Error fetching price stats', err)
+  }
+
   return {
     products: data,
     pagination: {
       page,
       limit,
       total: count
+    },
+    priceRange: {
+      min: minPrice,
+      max: maxPrice
     }
   }
 }
@@ -219,7 +307,7 @@ async function handleGetProductBySlug(slug) {
     .from('products')
     .select(`
       *,
-      category:categories(id, name, slug),
+      categories:product_categories(category:categories(id, name, slug)),
       images:product_images(id, image_url, sort_order),
       variants:product_variants(id, variant_type, variant_value, stock, price_modifier),
       reviews:reviews(
@@ -232,9 +320,9 @@ async function handleGetProductBySlug(slug) {
     `)
     .eq('slug', slug)
     .single()
-  
+
   if (error) throw error
-  
+
   // Calculate average rating
   if (data.reviews && data.reviews.length > 0) {
     const avgRating = data.reviews.reduce((sum, r) => sum + r.rating, 0) / data.reviews.length
@@ -244,7 +332,7 @@ async function handleGetProductBySlug(slug) {
     data.averageRating = 0
     data.reviewCount = 0
   }
-  
+
   return data
 }
 
@@ -253,7 +341,7 @@ async function handleGetProductBySlug(slug) {
 async function handleGetCart(request) {
   const user = await getAuthUser(request)
   if (!user) throw new Error('Unauthorized')
-  
+
   const { data, error } = await supabase
     .from('cart_items')
     .select(`
@@ -276,7 +364,7 @@ async function handleGetCart(request) {
       )
     `)
     .eq('user_id', user.id)
-  
+
   if (error) throw error
   return data
 }
@@ -284,24 +372,24 @@ async function handleGetCart(request) {
 async function handleAddToCart(request, body) {
   const user = await getAuthUser(request)
   if (!user) throw new Error('Unauthorized')
-  
+
   const { product_id, variant_id, quantity } = body
-  
+
   // Check if item already exists
   let query = supabase
     .from('cart_items')
     .select('*')
     .eq('user_id', user.id)
     .eq('product_id', product_id)
-  
+
   if (variant_id) {
     query = query.eq('variant_id', variant_id)
   } else {
     query = query.is('variant_id', null)
   }
-  
+
   const { data: existing } = await query.single()
-  
+
   if (existing) {
     // Update quantity
     const { data, error } = await supabase
@@ -310,7 +398,7 @@ async function handleAddToCart(request, body) {
       .eq('id', existing.id)
       .select()
       .single()
-    
+
     if (error) throw error
     return data
   } else {
@@ -325,7 +413,7 @@ async function handleAddToCart(request, body) {
       })
       .select()
       .single()
-    
+
     if (error) throw error
     return data
   }
@@ -334,9 +422,9 @@ async function handleAddToCart(request, body) {
 async function handleUpdateCartItem(request, itemId, body) {
   const user = await getAuthUser(request)
   if (!user) throw new Error('Unauthorized')
-  
+
   const { quantity } = body
-  
+
   const { data, error } = await supabase
     .from('cart_items')
     .update({ quantity })
@@ -344,7 +432,7 @@ async function handleUpdateCartItem(request, itemId, body) {
     .eq('user_id', user.id)
     .select()
     .single()
-  
+
   if (error) throw error
   return data
 }
@@ -352,13 +440,13 @@ async function handleUpdateCartItem(request, itemId, body) {
 async function handleRemoveFromCart(request, itemId) {
   const user = await getAuthUser(request)
   if (!user) throw new Error('Unauthorized')
-  
+
   const { error } = await supabase
     .from('cart_items')
     .delete()
     .eq('id', itemId)
     .eq('user_id', user.id)
-  
+
   if (error) throw error
   return { message: 'Item removed from cart' }
 }
@@ -366,12 +454,12 @@ async function handleRemoveFromCart(request, itemId) {
 async function handleClearCart(request) {
   const user = await getAuthUser(request)
   if (!user) throw new Error('Unauthorized')
-  
+
   const { error } = await supabase
     .from('cart_items')
     .delete()
     .eq('user_id', user.id)
-  
+
   if (error) throw error
   return { message: 'Cart cleared' }
 }
@@ -381,7 +469,7 @@ async function handleClearCart(request) {
 async function handleGetWishlist(request) {
   const user = await getAuthUser(request)
   if (!user) throw new Error('Unauthorized')
-  
+
   const { data, error } = await supabase
     .from('wishlists')
     .select(`
@@ -396,7 +484,7 @@ async function handleGetWishlist(request) {
       )
     `)
     .eq('user_id', user.id)
-  
+
   if (error) throw error
   return data
 }
@@ -404,9 +492,9 @@ async function handleGetWishlist(request) {
 async function handleAddToWishlist(request, body) {
   const user = await getAuthUser(request)
   if (!user) throw new Error('Unauthorized')
-  
+
   const { product_id } = body
-  
+
   const { data, error } = await supabase
     .from('wishlists')
     .insert({
@@ -415,7 +503,7 @@ async function handleAddToWishlist(request, body) {
     })
     .select()
     .single()
-  
+
   if (error) {
     if (error.code === '23505') {
       throw new Error('Product already in wishlist')
@@ -428,13 +516,13 @@ async function handleAddToWishlist(request, body) {
 async function handleRemoveFromWishlist(request, productId) {
   const user = await getAuthUser(request)
   if (!user) throw new Error('Unauthorized')
-  
+
   const { error } = await supabase
     .from('wishlists')
     .delete()
     .eq('user_id', user.id)
     .eq('product_id', productId)
-  
+
   if (error) throw error
   return { message: 'Item removed from wishlist' }
 }
@@ -444,16 +532,23 @@ async function handleRemoveFromWishlist(request, productId) {
 async function handleGetOrders(request) {
   const user = await getAuthUser(request)
   if (!user) throw new Error('Unauthorized')
-  
+
   const { data, error } = await supabase
     .from('orders')
     .select(`
       *,
-      items:order_items(*)
+      items:order_items(
+        *,
+        product:products(
+          id, name, slug, price, 
+          images:product_images(image_url)
+        ),
+        variant:product_variants(*)
+      )
     `)
     .eq('user_id', user.id)
     .order('created_at', { ascending: false })
-  
+
   if (error) throw error
   return data
 }
@@ -461,17 +556,24 @@ async function handleGetOrders(request) {
 async function handleGetOrderById(request, orderId) {
   const user = await getAuthUser(request)
   if (!user) throw new Error('Unauthorized')
-  
+
   const { data, error } = await supabase
     .from('orders')
     .select(`
       *,
-      items:order_items(*)
+      items:order_items(
+        *,
+        product:products(
+          id, name, slug, price, 
+          images:product_images(image_url)
+        ),
+        variant:product_variants(*)
+      )
     `)
     .eq('id', orderId)
     .eq('user_id', user.id)
     .single()
-  
+
   if (error) throw error
   return data
 }
@@ -479,9 +581,9 @@ async function handleGetOrderById(request, orderId) {
 async function handleCreateOrder(request, body) {
   const user = await getAuthUser(request)
   if (!user) throw new Error('Unauthorized')
-  
-  const { shipping_address, billing_address, coupon_code } = body
-  
+
+  const { shipping_address, billing_address, coupon_code, payment_method } = body
+
   // Get cart items
   const { data: cartItems } = await supabase
     .from('cart_items')
@@ -491,46 +593,89 @@ async function handleCreateOrder(request, body) {
       variant:product_variants(*)
     `)
     .eq('user_id', user.id)
-  
+
   if (!cartItems || cartItems.length === 0) {
     throw new Error('Cart is empty')
   }
-  
-  // Calculate total
+
+  // Calculate total and discount
   let total = 0
+  let totalDiscount = 0
   const orderItems = []
-  
+
   for (const item of cartItems) {
     const price = item.product.discount_price || item.product.price
+    const originalPrice = item.product.price
+    const discountAmount = (originalPrice - price) * item.quantity
+
     const variantPrice = item.variant ? price + item.variant.price_modifier : price
     const subtotal = variantPrice * item.quantity
-    
+
     total += subtotal
-    
+    totalDiscount += discountAmount
+
     orderItems.push({
       product_id: item.product_id,
+      variant_id: item.variant?.id,
       product_name: item.product.name,
       product_image: item.product.images?.[0]?.image_url,
       variant_details: item.variant,
       price: variantPrice,
       quantity: item.quantity,
       subtotal
+
     })
-    
+
     // Check stock
     if (item.variant) {
       if (item.variant.stock < item.quantity) {
-        throw new Error(`Insufficient stock for \${item.product.name}`)
+        throw new Error(`Insufficient stock for ${item.product.name}`)
       }
     } else {
       if (item.product.stock_quantity < item.quantity) {
-        throw new Error(`Insufficient stock for \${item.product.name}`)
+        throw new Error(`Insufficient stock for ${item.product.name}`)
       }
     }
   }
-  
+
+  // Fetch store settings
+  const { data: settingsData } = await supabase
+    .from('store_settings')
+    .select('key, value')
+    .in('key', ['shipping_fee', 'free_shipping_threshold', 'cod_enabled'])
+
+  let shippingFee = 70
+  let freeShippingThreshold = 999
+  let codEnabled = true
+
+  if (settingsData) {
+    settingsData.forEach(item => {
+      if (item.key === 'shipping_fee') shippingFee = Number(item.value)
+      if (item.key === 'free_shipping_threshold') freeShippingThreshold = Number(item.value)
+      if (item.key === 'cod_enabled') codEnabled = item.value === 'true' || item.value === true
+    })
+  }
+
+  // Validate COD
+  if (payment_method === 'cod' && !codEnabled) {
+    return NextResponse.json(
+      { error: 'Cash on Delivery is currently disabled' },
+      { status: 400 }
+    )
+  }
+
+  // Calculate shipping
+  const shippingCost = total < freeShippingThreshold ? shippingFee : 0
+  const subtotalBeforeShipping = total
+  total += shippingCost
+
+  // Calculate GST (12%)
+  const taxAmount = Math.round(subtotalBeforeShipping * 0.12 * 100) / 100
+  // "Give exact amount of discount" -> Discount equals tax
+  const discountAmount = taxAmount
+
   // Apply coupon if provided
-  let discount = 0
+  let couponDiscount = 0
   if (coupon_code) {
     const { data: coupon } = await supabase
       .from('coupons')
@@ -538,18 +683,18 @@ async function handleCreateOrder(request, body) {
       .eq('code', coupon_code)
       .eq('active', true)
       .single()
-    
+
     if (coupon) {
       if (total >= (coupon.min_order_amount || 0)) {
         if (coupon.discount_type === 'percent') {
-          discount = (total * coupon.discount_value) / 100
+          couponDiscount = (total * coupon.discount_value) / 100
           if (coupon.max_discount_amount) {
-            discount = Math.min(discount, coupon.max_discount_amount)
+            couponDiscount = Math.min(couponDiscount, coupon.max_discount_amount)
           }
         } else {
-          discount = coupon.discount_value
+          couponDiscount = coupon.discount_value
         }
-        
+
         // Update coupon usage
         await supabase
           .from('coupons')
@@ -558,9 +703,37 @@ async function handleCreateOrder(request, body) {
       }
     }
   }
-  
-  const finalTotal = total - discount
-  
+
+  const finalTotal = total - couponDiscount
+
+  // Auto-save address if not exists
+  if (shipping_address) {
+    const { data: existingAddress } = await supabase
+      .from('addresses')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('address_line1', shipping_address.address_line1)
+      .eq('postal_code', shipping_address.postal_code)
+      .single()
+
+    if (!existingAddress) {
+      await supabase
+        .from('addresses')
+        .insert({
+          user_id: user.id,
+          full_name: shipping_address.full_name,
+          phone: shipping_address.phone,
+          address_line1: shipping_address.address_line1,
+          address_line2: shipping_address.address_line2,
+          city: shipping_address.city,
+          state: shipping_address.state,
+          postal_code: shipping_address.postal_code,
+          country: shipping_address.country || 'India',
+          is_default: false
+        })
+    }
+  }
+
   // Create order
   const { data: order, error: orderError } = await supabase
     .from('orders')
@@ -568,43 +741,72 @@ async function handleCreateOrder(request, body) {
       user_id: user.id,
       status: 'pending',
       total_amount: finalTotal,
-      payment_status: 'pending',
+      payment_status: payment_method === 'cod' ? 'pending' : 'pending',
+      shipping_cost: shippingCost || 0,
+      tax_amount: taxAmount || 0,
+      discount: discountAmount + (couponDiscount || 0),
+      payment_method: payment_method || 'online',
       shipping_address,
       billing_address: billing_address || shipping_address,
-      coupon_code,
-      discount_amount: discount
+      coupon_code
     })
     .select()
     .single()
-  
+
   if (orderError) throw orderError
-  
+
   // Create order items
   const itemsWithOrderId = orderItems.map(item => ({
     ...item,
     order_id: order.id
   }))
-  
+
   const { error: itemsError } = await supabase
     .from('order_items')
     .insert(itemsWithOrderId)
-  
+
   if (itemsError) throw itemsError
-  
+
+  // If COD, finalize order immediately
+  if (payment_method === 'cod') {
+    // Deduct stock
+    for (const item of orderItems) {
+      if (item.variant_details) {
+        await supabase.rpc('decrement_variant_stock', {
+          variant_id: item.variant_details.id,
+          qty: item.quantity
+        })
+      } else {
+        await supabase.rpc('decrement_product_stock', {
+          product_id: item.product_id,
+          qty: item.quantity
+        })
+      }
+    }
+
+    // Clear cart
+    await supabase
+      .from('cart_items')
+      .delete()
+      .eq('user_id', user.id)
+
+    return { order }
+  }
+
   // Create Razorpay order
-  const razorpayOrder = createRazorpayOrder(
+  const razorpayOrder = await createRazorpayOrder(
     finalTotal * 100, // Convert to paise
     'INR',
     order.id
   )
-  
+
   if (razorpayOrder.success) {
     await supabase
       .from('orders')
       .update({ razorpay_order_id: razorpayOrder.orderId })
       .eq('id', order.id)
   }
-  
+
   return {
     order,
     razorpay: razorpayOrder
@@ -614,16 +816,16 @@ async function handleCreateOrder(request, body) {
 async function handleVerifyPayment(request, body) {
   const user = await getAuthUser(request)
   if (!user) throw new Error('Unauthorized')
-  
+
   const { order_id, payment_id, signature } = body
-  
+
   // Verify signature
   const isValid = verifyPaymentSignature(order_id, payment_id, signature)
-  
+
   if (!isValid) {
     throw new Error('Invalid payment signature')
   }
-  
+
   // Update order
   const { data, error } = await supabase
     .from('orders')
@@ -637,15 +839,15 @@ async function handleVerifyPayment(request, body) {
     .eq('user_id', user.id)
     .select()
     .single()
-  
+
   if (error) throw error
-  
+
   // Deduct stock
   const { data: orderItems } = await supabase
     .from('order_items')
     .select('*')
     .eq('order_id', data.id)
-  
+
   for (const item of orderItems) {
     if (item.variant_details) {
       await supabase.rpc('decrement_variant_stock', {
@@ -659,13 +861,13 @@ async function handleVerifyPayment(request, body) {
       })
     }
   }
-  
+
   // Clear cart
   await supabase
     .from('cart_items')
     .delete()
     .eq('user_id', user.id)
-  
+
   return data
 }
 
@@ -674,9 +876,9 @@ async function handleVerifyPayment(request, body) {
 async function handleCreateReview(request, body) {
   const user = await getAuthUser(request)
   if (!user) throw new Error('Unauthorized')
-  
+
   const { product_id, rating, comment } = body
-  
+
   const { data, error } = await supabase
     .from('reviews')
     .insert({
@@ -687,7 +889,7 @@ async function handleCreateReview(request, body) {
     })
     .select()
     .single()
-  
+
   if (error) {
     if (error.code === '23505') {
       throw new Error('You have already reviewed this product')
@@ -700,9 +902,9 @@ async function handleCreateReview(request, body) {
 async function handleUpdateReview(request, reviewId, body) {
   const user = await getAuthUser(request)
   if (!user) throw new Error('Unauthorized')
-  
+
   const { rating, comment } = body
-  
+
   const { data, error } = await supabase
     .from('reviews')
     .update({ rating, comment })
@@ -710,7 +912,7 @@ async function handleUpdateReview(request, reviewId, body) {
     .eq('user_id', user.id)
     .select()
     .single()
-  
+
   if (error) throw error
   return data
 }
@@ -718,13 +920,13 @@ async function handleUpdateReview(request, reviewId, body) {
 async function handleDeleteReview(request, reviewId) {
   const user = await getAuthUser(request)
   if (!user) throw new Error('Unauthorized')
-  
+
   const { error } = await supabase
     .from('reviews')
     .delete()
     .eq('id', reviewId)
     .eq('user_id', user.id)
-  
+
   if (error) throw error
   return { message: 'Review deleted' }
 }
@@ -734,13 +936,13 @@ async function handleDeleteReview(request, reviewId) {
 async function handleGetAddresses(request) {
   const user = await getAuthUser(request)
   if (!user) throw new Error('Unauthorized')
-  
+
   const { data, error } = await supabase
     .from('addresses')
     .select('*')
     .eq('user_id', user.id)
     .order('is_default', { ascending: false })
-  
+
   if (error) throw error
   return data
 }
@@ -748,7 +950,7 @@ async function handleGetAddresses(request) {
 async function handleCreateAddress(request, body) {
   const user = await getAuthUser(request)
   if (!user) throw new Error('Unauthorized')
-  
+
   const { data, error } = await supabase
     .from('addresses')
     .insert({
@@ -757,7 +959,7 @@ async function handleCreateAddress(request, body) {
     })
     .select()
     .single()
-  
+
   if (error) throw error
   return data
 }
@@ -765,7 +967,7 @@ async function handleCreateAddress(request, body) {
 async function handleUpdateAddress(request, addressId, body) {
   const user = await getAuthUser(request)
   if (!user) throw new Error('Unauthorized')
-  
+
   const { data, error } = await supabase
     .from('addresses')
     .update(body)
@@ -773,7 +975,7 @@ async function handleUpdateAddress(request, addressId, body) {
     .eq('user_id', user.id)
     .select()
     .single()
-  
+
   if (error) throw error
   return data
 }
@@ -781,13 +983,13 @@ async function handleUpdateAddress(request, addressId, body) {
 async function handleDeleteAddress(request, addressId) {
   const user = await getAuthUser(request)
   if (!user) throw new Error('Unauthorized')
-  
+
   const { error } = await supabase
     .from('addresses')
     .delete()
     .eq('id', addressId)
     .eq('user_id', user.id)
-  
+
   if (error) throw error
   return { message: 'Address deleted' }
 }
@@ -799,17 +1001,17 @@ async function handleAdminGetProducts(request) {
   if (!user || !(await isAdmin(user.id))) {
     throw new Error('Unauthorized')
   }
-  
+
   const { data, error } = await supabase
     .from('products')
     .select(`
       *,
-      category:categories(name),
+      categories:product_categories(category:categories(name)),
       images:product_images(*),
       variants:product_variants(*)
     `)
     .order('created_at', { ascending: false })
-  
+
   if (error) throw error
   return data
 }
@@ -819,18 +1021,34 @@ async function handleAdminCreateProduct(request, body) {
   if (!user || !(await isAdmin(user.id))) {
     throw new Error('Unauthorized')
   }
-  
-  const { images, variants, ...productData } = body
-  
+
+  const { images, variants, category_ids, ...productData } = body
+
+  // Generate slug
+  const slug = productData.name.toLowerCase().replace(/ /g, '-').replace(/[^\w-]+/g, '')
+
   // Create product
   const { data: product, error: productError } = await supabase
     .from('products')
-    .insert(productData)
+    .insert({
+      ...productData,
+      slug
+    })
     .select()
     .single()
-  
+
   if (productError) throw productError
-  
+
+  // Add categories
+  if (category_ids && category_ids.length > 0) {
+    const categoryData = category_ids.map(catId => ({
+      product_id: product.id,
+      category_id: catId
+    }))
+
+    await supabase.from('product_categories').insert(categoryData)
+  }
+
   // Add images
   if (images && images.length > 0) {
     const imageData = images.map((img, idx) => ({
@@ -838,20 +1056,20 @@ async function handleAdminCreateProduct(request, body) {
       image_url: img,
       sort_order: idx + 1
     }))
-    
+
     await supabase.from('product_images').insert(imageData)
   }
-  
+
   // Add variants
   if (variants && variants.length > 0) {
     const variantData = variants.map(v => ({
       product_id: product.id,
       ...v
     }))
-    
+
     await supabase.from('product_variants').insert(variantData)
   }
-  
+
   return product
 }
 
@@ -860,9 +1078,9 @@ async function handleAdminUpdateProduct(request, productId, body) {
   if (!user || !(await isAdmin(user.id))) {
     throw new Error('Unauthorized')
   }
-  
-  const { images, variants, ...productData } = body
-  
+
+  const { images, variants, category_ids, ...productData } = body
+
   // Update product
   const { data, error } = await supabase
     .from('products')
@@ -870,22 +1088,38 @@ async function handleAdminUpdateProduct(request, productId, body) {
     .eq('id', productId)
     .select()
     .single()
-  
+
   if (error) throw error
-  
+
+  // Update categories if provided
+  if (category_ids) {
+    // Remove existing
+    await supabase.from('product_categories').delete().eq('product_id', productId)
+
+    // Add new
+    if (category_ids.length > 0) {
+      const categoryData = category_ids.map(catId => ({
+        product_id: productId,
+        category_id: catId
+      }))
+
+      await supabase.from('product_categories').insert(categoryData)
+    }
+  }
+
   // Update images if provided
   if (images) {
     await supabase.from('product_images').delete().eq('product_id', productId)
-    
+
     const imageData = images.map((img, idx) => ({
       product_id: productId,
       image_url: img,
       sort_order: idx + 1
     }))
-    
+
     await supabase.from('product_images').insert(imageData)
   }
-  
+
   return data
 }
 
@@ -894,12 +1128,12 @@ async function handleAdminDeleteProduct(request, productId) {
   if (!user || !(await isAdmin(user.id))) {
     throw new Error('Unauthorized')
   }
-  
+
   const { error } = await supabase
     .from('products')
     .delete()
     .eq('id', productId)
-  
+
   if (error) throw error
   return { message: 'Product deleted' }
 }
@@ -909,16 +1143,23 @@ async function handleAdminGetOrders(request) {
   if (!user || !(await isAdmin(user.id))) {
     throw new Error('Unauthorized')
   }
-  
+
   const { data, error } = await supabase
     .from('orders')
     .select(`
       *,
       user:profiles(full_name, email, phone),
-      items:order_items(*)
+      items:order_items(
+        *,
+        product:products(
+          id, name, slug, price, 
+          images:product_images(image_url)
+        ),
+        variant:product_variants(*)
+      )
     `)
     .order('created_at', { ascending: false })
-  
+
   if (error) throw error
   return data
 }
@@ -928,16 +1169,20 @@ async function handleAdminUpdateOrderStatus(request, orderId, body) {
   if (!user || !(await isAdmin(user.id))) {
     throw new Error('Unauthorized')
   }
-  
-  const { status } = body
-  
+
+  const { status, payment_status } = body
+
+  const updates = {}
+  if (status) updates.status = status
+  if (payment_status) updates.payment_status = payment_status
+
   const { data, error } = await supabase
     .from('orders')
-    .update({ status })
+    .update(updates)
     .eq('id', orderId)
     .select()
     .single()
-  
+
   if (error) throw error
   return data
 }
@@ -947,31 +1192,31 @@ async function handleAdminGetStats(request) {
   if (!user || !(await isAdmin(user.id))) {
     throw new Error('Unauthorized')
   }
-  
+
   // Get total orders
   const { count: totalOrders } = await supabase
     .from('orders')
     .select('*', { count: 'exact', head: true })
-  
+
   // Get total revenue
   const { data: orders } = await supabase
     .from('orders')
     .select('total_amount')
     .eq('payment_status', 'paid')
-  
+
   const totalRevenue = orders?.reduce((sum, o) => sum + parseFloat(o.total_amount), 0) || 0
-  
+
   // Get total products
   const { count: totalProducts } = await supabase
     .from('products')
     .select('*', { count: 'exact', head: true })
-  
+
   // Get total customers
   const { count: totalCustomers } = await supabase
     .from('profiles')
     .select('*', { count: 'exact', head: true })
     .eq('role', 'user')
-  
+
   return {
     totalOrders,
     totalRevenue,
@@ -984,30 +1229,30 @@ async function handleAdminGetStats(request) {
 
 async function handleValidateCoupon(body) {
   const { code, total_amount } = body
-  
+
   const { data, error } = await supabase
     .from('coupons')
     .select('*')
     .eq('code', code)
     .eq('active', true)
     .single()
-  
+
   if (error || !data) {
     throw new Error('Invalid coupon code')
   }
-  
+
   if (data.expiry_date && new Date(data.expiry_date) < new Date()) {
     throw new Error('Coupon has expired')
   }
-  
+
   if (data.usage_limit && data.used_count >= data.usage_limit) {
     throw new Error('Coupon usage limit reached')
   }
-  
+
   if (total_amount < (data.min_order_amount || 0)) {
     throw new Error(`Minimum order amount is ₹\${data.min_order_amount}`)
   }
-  
+
   let discount = 0
   if (data.discount_type === 'percent') {
     discount = (total_amount * data.discount_value) / 100
@@ -1017,11 +1262,56 @@ async function handleValidateCoupon(body) {
   } else {
     discount = data.discount_value
   }
-  
+
   return {
     valid: true,
     discount,
     coupon: data
+  }
+}
+
+// ============ SUPPORT ENDPOINTS ============
+
+async function handleGetSupportTickets(request) {
+  const user = await getAuthUser(request)
+  if (!user) throw new Error('Unauthorized')
+
+  const { data, error } = await supabase
+    .from('support_tickets')
+    .select('*')
+    .eq('user_id', user.id)
+    .order('created_at', { ascending: false })
+
+  if (error) throw error
+  return data
+}
+
+async function handleGetSupportTicketDetails(request, ticketId) {
+  const user = await getAuthUser(request)
+  if (!user) throw new Error('Unauthorized')
+
+  // Fetch ticket
+  const { data: ticket, error: ticketError } = await supabase
+    .from('support_tickets')
+    .select('*')
+    .eq('id', ticketId)
+    .eq('user_id', user.id)
+    .single()
+
+  if (ticketError) throw ticketError
+
+  // Fetch messages
+  const { data: messages, error: messagesError } = await supabase
+    .from('support_messages')
+    .select('*')
+    .eq('ticket_id', ticketId)
+    .order('created_at', { ascending: true })
+
+  if (messagesError) throw messagesError
+
+  return {
+    ...ticket,
+    messages
   }
 }
 
@@ -1033,7 +1323,7 @@ export async function GET(request, context) {
     const path = params.path || []
     const { searchParams } = new URL(request.url)
     const searchParamsObj = Object.fromEntries(searchParams.entries())
-    
+
     // Route matching
     if (path[0] === 'categories') {
       if (path[1]) {
@@ -1041,37 +1331,44 @@ export async function GET(request, context) {
       }
       return NextResponse.json(await handleGetCategories())
     }
-    
+
     if (path[0] === 'products') {
       if (path[1] === 'slug' && path[2]) {
         return NextResponse.json(await handleGetProductBySlug(path[2]))
       }
       return NextResponse.json(await handleGetProducts(searchParamsObj))
     }
-    
+
     if (path[0] === 'cart') {
       return NextResponse.json(await handleGetCart(request))
     }
-    
+
     if (path[0] === 'wishlist') {
       return NextResponse.json(await handleGetWishlist(request))
     }
-    
+
     if (path[0] === 'orders') {
       if (path[1]) {
         return NextResponse.json(await handleGetOrderById(request, path[1]))
       }
       return NextResponse.json(await handleGetOrders(request))
     }
-    
+
     if (path[0] === 'profile') {
       return NextResponse.json(await handleGetProfile(request))
     }
-    
+
     if (path[0] === 'addresses') {
       return NextResponse.json(await handleGetAddresses(request))
     }
-    
+
+    if (path[0] === 'support') {
+      if (path[1]) {
+        return NextResponse.json(await handleGetSupportTicketDetails(request, path[1]))
+      }
+      return NextResponse.json(await handleGetSupportTickets(request))
+    }
+
     // Admin routes
     if (path[0] === 'admin') {
       if (path[1] === 'products') {
@@ -1083,10 +1380,22 @@ export async function GET(request, context) {
       if (path[1] === 'stats') {
         return NextResponse.json(await handleAdminGetStats(request))
       }
+      if (path[1] === 'customers') {
+        return NextResponse.json(await handleAdminGetCustomers(request))
+      }
+      if (path[1] === 'coupons') {
+        return NextResponse.json(await handleAdminGetCoupons(request))
+      }
+      if (path[1] === 'support') {
+        if (path[2]) {
+          return NextResponse.json(await handleAdminGetSupportTicketDetails(request, path[2]))
+        }
+        return NextResponse.json(await handleAdminGetSupportTickets(request))
+      }
     }
-    
+
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
-    
+
   } catch (error) {
     console.error('API Error:', error)
     return NextResponse.json(
@@ -1096,69 +1405,306 @@ export async function GET(request, context) {
   }
 }
 
+
+
+
+async function handleAdminCreateCategory(request, body) {
+  const user = await getAuthUser(request)
+  if (!user || !(await isAdmin(user.id))) throw new Error('Unauthorized')
+
+  const { name, description, image_url, is_main } = body
+  const slug = name.toLowerCase().replace(/ /g, '-').replace(/[^\w-]+/g, '')
+
+  const { data, error } = await supabase
+    .from('categories')
+    .insert({ name, slug, description, image_url, is_main: is_main || false })
+    .select()
+    .single()
+
+  if (error) throw error
+  return data
+}
+
+async function handleAdminUpdateCategory(request, categoryId, body) {
+  const user = await getAuthUser(request)
+  if (!user || !(await isAdmin(user.id))) throw new Error('Unauthorized')
+
+  const { data, error } = await supabase
+    .from('categories')
+    .update(body)
+    .eq('id', categoryId)
+    .select()
+    .single()
+
+  if (error) throw error
+  return data
+}
+
+async function handleAdminDeleteCategory(request, categoryId) {
+  const user = await getAuthUser(request)
+  if (!user || !(await isAdmin(user.id))) throw new Error('Unauthorized')
+
+  const { error } = await supabase
+    .from('categories')
+    .delete()
+    .eq('id', categoryId)
+
+  if (error) throw error
+  return { message: 'Category deleted' }
+}
+
+async function handleAdminGetCustomers(request) {
+  const user = await getAuthUser(request)
+  if (!user || !(await isAdmin(user.id))) throw new Error('Unauthorized')
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, full_name, email, phone, role, created_at, avatar_url')
+    .eq('role', 'user')
+    .order('created_at', { ascending: false })
+
+  if (error) throw error
+  return data
+}
+
+async function handleAdminGetCoupons(request) {
+  const user = await getAuthUser(request)
+  if (!user || !(await isAdmin(user.id))) throw new Error('Unauthorized')
+
+  const { data, error } = await supabase
+    .from('coupons')
+    .select('*')
+    .order('created_at', { ascending: false })
+
+  if (error) throw error
+  return data
+}
+
+
+
+async function handleAdminGetSupportTickets(request) {
+  const user = await getAuthUser(request)
+  if (!user || !(await isAdmin(user.id))) throw new Error('Unauthorized')
+
+  // Use RPC to bypass RLS issues, as the server-side client might not hold the session
+  const { data, error } = await supabase.rpc('get_all_support_tickets_admin')
+
+  if (error) throw error
+
+  // Map to match expected frontend structure (nested user object)
+  return data.map(t => ({
+    ...t,
+    user: {
+      full_name: t.user_full_name,
+      email: t.user_email
+    }
+  }))
+}
+
+async function handleAdminGetSupportTicketDetails(request, ticketId) {
+  const user = await getAuthUser(request)
+  if (!user || !(await isAdmin(user.id))) throw new Error('Unauthorized')
+
+  const { data, error } = await supabase.rpc('get_support_ticket_details_admin', { p_ticket_id: ticketId })
+
+  if (error) throw error
+  return data
+}
+
+async function handleAdminCreateCoupon(request, body) {
+  const user = await getAuthUser(request)
+  if (!user || !(await isAdmin(user.id))) throw new Error('Unauthorized')
+
+  const {
+    code,
+    discount_type,
+    discount_value,
+    min_order_amount,
+    max_discount_amount,
+    expiry_date,
+    usage_limit
+  } = body
+
+  const { data, error } = await supabase
+    .from('coupons')
+    .insert({
+      code: code.toUpperCase(),
+      discount_type,
+      discount_value,
+      min_order_amount,
+      max_discount_amount,
+      expiry_date,
+      usage_limit,
+      active: true,
+      used_count: 0
+    })
+    .select()
+    .single()
+
+  if (error) throw error
+  return data
+}
+
+async function handleAdminDeleteCoupon(request, couponId) {
+  const user = await getAuthUser(request)
+  if (!user || !(await isAdmin(user.id))) throw new Error('Unauthorized')
+
+  const { error } = await supabase
+    .from('coupons')
+    .delete()
+    .eq('id', couponId)
+
+  if (error) throw error
+  return { message: 'Coupon deleted' }
+}
+
+// ... (previous code)
+
+async function handleRequestCancellation(request, orderId, body) {
+  const user = await getAuthUser(request)
+  if (!user) throw new Error('Unauthorized')
+  const { reason } = body
+
+  const { data: order } = await supabase.from('orders').select('id, user_id').eq('id', orderId).single()
+  if (!order || order.user_id !== user.id) throw new Error('Order not found')
+
+  const { data, error } = await supabase.from('orders')
+    .update({ cancellation_status: 'requested', cancellation_reason: reason })
+    .eq('id', orderId)
+    .select().single()
+
+  if (error) throw error
+  return data
+}
+
+async function handleRequestAddressChange(request, orderId, body) {
+  const user = await getAuthUser(request)
+  if (!user) throw new Error('Unauthorized')
+  const { new_address } = body
+
+  const { data: order } = await supabase.from('orders').select('id, user_id').eq('id', orderId).single()
+  if (!order || order.user_id !== user.id) throw new Error('Order not found')
+
+  const { data, error } = await supabase.from('orders')
+    .update({ address_change_status: 'requested', new_shipping_address: new_address })
+    .eq('id', orderId)
+    .select().single()
+
+  if (error) throw error
+  return data
+}
+
+
+
+// ...
+
+async function handleAdminReplyTicket(request, ticketId, body) {
+  const user = await getAuthUser(request)
+  if (!user || !(await isAdmin(user.id))) throw new Error('Unauthorized')
+
+  const { message, attachments, status } = body
+
+  // Use RPC to bypass RLS (Robust against missing Service Role Key)
+  // If message provided, use the reply RPC
+  if (message || (attachments && attachments.length > 0)) {
+    const { error } = await supabase.rpc('admin_reply_to_ticket', {
+      p_ticket_id: ticketId,
+      p_sender_id: user.id,
+      p_message: message || '',
+      p_attachments: attachments || [],
+      p_status: status || 'in_progress'
+    })
+    if (error) throw error
+  } else if (status) {
+    // Just status update
+    const { error } = await supabase.rpc('admin_update_ticket_status', {
+      p_ticket_id: ticketId,
+      p_status: status
+    })
+    if (error) throw error
+  }
+
+  return { success: true }
+}
+
+async function handleAdminCancellation(request, orderId, body) {
+  const user = await getAuthUser(request)
+  if (!user || !(await isAdmin(user.id))) throw new Error('Unauthorized')
+  const { status } = body
+
+  let updateData = { cancellation_status: status }
+  if (status === 'approved') {
+    updateData.status = 'cancelled'
+  }
+
+  const { data, error } = await supabase.from('orders').update(updateData).eq('id', orderId).select().single()
+  if (error) throw error
+  return data
+}
+
+async function handleAdminAddressChange(request, orderId, body) {
+  const user = await getAuthUser(request)
+  if (!user || !(await isAdmin(user.id))) throw new Error('Unauthorized')
+  const { status } = body
+
+  let updateData = { address_change_status: status }
+  if (status === 'approved') {
+    const { data: order } = await supabase.from('orders').select('new_shipping_address').eq('id', orderId).single()
+    if (order && order.new_shipping_address) {
+      updateData.shipping_address = order.new_shipping_address
+    }
+  }
+
+  const { data, error } = await supabase.from('orders').update(updateData).eq('id', orderId).select().single()
+  if (error) throw error
+  return data
+}
+
 export async function POST(request, context) {
   try {
     const { params } = context
     const path = params.path || []
     const body = await request.json()
-    
+
     // Route matching
     if (path[0] === 'auth') {
-      if (path[1] === 'signup') {
-        return NextResponse.json(await handleSignUp(body))
-      }
-      if (path[1] === 'signin') {
-        return NextResponse.json(await handleSignIn(body))
-      }
-      if (path[1] === 'signout') {
-        return NextResponse.json(await handleSignOut(request))
-      }
+      if (path[1] === 'signup') return NextResponse.json(await handleSignUp(body))
+      if (path[1] === 'signin') return NextResponse.json(await handleSignIn(body))
+      if (path[1] === 'signout') return NextResponse.json(await handleSignOut(request))
     }
-    
-    if (path[0] === 'cart') {
-      return NextResponse.json(await handleAddToCart(request, body))
-    }
-    
-    if (path[0] === 'wishlist') {
-      return NextResponse.json(await handleAddToWishlist(request, body))
-    }
-    
+
+    if (path[0] === 'cart') return NextResponse.json(await handleAddToCart(request, body))
+    if (path[0] === 'wishlist') return NextResponse.json(await handleAddToWishlist(request, body))
+
     if (path[0] === 'orders') {
-      if (path[1] === 'create') {
-        return NextResponse.json(await handleCreateOrder(request, body))
-      }
-      if (path[1] === 'verify-payment') {
-        return NextResponse.json(await handleVerifyPayment(request, body))
-      }
+      if (path[1] === 'create') return NextResponse.json(await handleCreateOrder(request, body))
+      if (path[1] === 'verify-payment') return NextResponse.json(await handleVerifyPayment(request, body))
+
+      // Request handlers
+      if (path[2] === 'cancel') return NextResponse.json(await handleRequestCancellation(request, path[1], body))
+      if (path[2] === 'address-change') return NextResponse.json(await handleRequestAddressChange(request, path[1], body))
     }
-    
-    if (path[0] === 'reviews') {
-      return NextResponse.json(await handleCreateReview(request, body))
-    }
-    
-    if (path[0] === 'addresses') {
-      return NextResponse.json(await handleCreateAddress(request, body))
-    }
-    
-    if (path[0] === 'coupons' && path[1] === 'validate') {
-      return NextResponse.json(await handleValidateCoupon(body))
-    }
-    
+
+    if (path[0] === 'reviews') return NextResponse.json(await handleCreateReview(request, body))
+    if (path[0] === 'addresses') return NextResponse.json(await handleCreateAddress(request, body))
+    if (path[0] === 'coupons' && path[1] === 'validate') return NextResponse.json(await handleValidateCoupon(body))
+
     // Admin routes
     if (path[0] === 'admin') {
-      if (path[1] === 'products') {
-        return NextResponse.json(await handleAdminCreateProduct(request, body))
+      if (path[1] === 'products') return NextResponse.json(await handleAdminCreateProduct(request, body))
+      if (path[1] === 'categories') return NextResponse.json(await handleAdminCreateCategory(request, body))
+      if (path[1] === 'coupons') return NextResponse.json(await handleAdminCreateCoupon(request, body))
+      if (path[1] === 'support' && path[2]) {
+        if (path[3] === 'reply') return NextResponse.json(await handleAdminReplyTicket(request, path[2], body))
+        if (path[3] === 'status') return NextResponse.json(await handleAdminReplyTicket(request, path[2], { status: body.status }))
       }
     }
-    
+
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
-    
+
   } catch (error) {
     console.error('API Error:', error)
-    return NextResponse.json(
-      { error: error.message || 'Internal server error' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 })
   }
 }
 
@@ -1167,41 +1713,28 @@ export async function PUT(request, context) {
     const { params } = context
     const path = params.path || []
     const body = await request.json()
-    
-    if (path[0] === 'profile') {
-      return NextResponse.json(await handleUpdateProfile(request, body))
-    }
-    
-    if (path[0] === 'cart' && path[1]) {
-      return NextResponse.json(await handleUpdateCartItem(request, path[1], body))
-    }
-    
-    if (path[0] === 'reviews' && path[1]) {
-      return NextResponse.json(await handleUpdateReview(request, path[1], body))
-    }
-    
-    if (path[0] === 'addresses' && path[1]) {
-      return NextResponse.json(await handleUpdateAddress(request, path[1], body))
-    }
-    
+
+    if (path[0] === 'profile') return NextResponse.json(await handleUpdateProfile(request, body))
+    if (path[0] === 'cart' && path[1]) return NextResponse.json(await handleUpdateCartItem(request, path[1], body))
+    if (path[0] === 'reviews' && path[1]) return NextResponse.json(await handleUpdateReview(request, path[1], body))
+    if (path[0] === 'addresses' && path[1]) return NextResponse.json(await handleUpdateAddress(request, path[1], body))
+
     // Admin routes
     if (path[0] === 'admin') {
-      if (path[1] === 'products' && path[2]) {
-        return NextResponse.json(await handleAdminUpdateProduct(request, path[2], body))
-      }
+      if (path[1] === 'products' && path[2]) return NextResponse.json(await handleAdminUpdateProduct(request, path[2], body))
+      if (path[1] === 'categories' && path[2]) return NextResponse.json(await handleAdminUpdateCategory(request, path[2], body))
       if (path[1] === 'orders' && path[2]) {
+        if (path[3] === 'cancellation') return NextResponse.json(await handleAdminCancellation(request, path[2], body))
+        if (path[3] === 'address-change') return NextResponse.json(await handleAdminAddressChange(request, path[2], body))
         return NextResponse.json(await handleAdminUpdateOrderStatus(request, path[2], body))
       }
     }
-    
+
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
-    
+
   } catch (error) {
     console.error('API Error:', error)
-    return NextResponse.json(
-      { error: error.message || 'Internal server error' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 })
   }
 }
 
@@ -1209,7 +1742,7 @@ export async function DELETE(request, context) {
   try {
     const { params } = context
     const path = params.path || []
-    
+
     if (path[0] === 'cart') {
       if (path[1] === 'clear') {
         return NextResponse.json(await handleClearCart(request))
@@ -1218,26 +1751,34 @@ export async function DELETE(request, context) {
         return NextResponse.json(await handleRemoveFromCart(request, path[1]))
       }
     }
-    
+
     if (path[0] === 'wishlist' && path[1]) {
       return NextResponse.json(await handleRemoveFromWishlist(request, path[1]))
     }
-    
+
     if (path[0] === 'reviews' && path[1]) {
       return NextResponse.json(await handleDeleteReview(request, path[1]))
     }
-    
+
     if (path[0] === 'addresses' && path[1]) {
       return NextResponse.json(await handleDeleteAddress(request, path[1]))
     }
-    
+
     // Admin routes
-    if (path[0] === 'admin' && path[1] === 'products' && path[2]) {
-      return NextResponse.json(await handleAdminDeleteProduct(request, path[2]))
+    if (path[0] === 'admin') {
+      if (path[1] === 'products' && path[2]) {
+        return NextResponse.json(await handleAdminDeleteProduct(request, path[2]))
+      }
+      if (path[1] === 'categories' && path[2]) {
+        return NextResponse.json(await handleAdminDeleteCategory(request, path[2]))
+      }
+      if (path[1] === 'coupons' && path[2]) {
+        return NextResponse.json(await handleAdminDeleteCoupon(request, path[2]))
+      }
     }
-    
+
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
-    
+
   } catch (error) {
     console.error('API Error:', error)
     return NextResponse.json(
