@@ -133,11 +133,12 @@ export default function OrderDetailsPage({ params }) {
                                     {order.items?.map((item) => (
                                         <div key={item.id} className="p-6 flex gap-6">
                                             <div className="relative h-24 w-24 flex-shrink-0 bg-neutral-100 rounded-md overflow-hidden">
-                                                {item.product_image ? (
-                                                    <Image src={item.product_image} alt={item.product_name} fill className="object-cover" />
-                                                ) : (
-                                                    <Package className="h-8 w-8 m-auto text-neutral-400" />
-                                                )}
+                                                <Image
+                                                    src={item.product_image || '/default-product.jpeg'}
+                                                    alt={item.product_name}
+                                                    fill
+                                                    className="object-cover"
+                                                />
                                             </div>
                                             <div className="flex-1">
                                                 <h4 className="font-medium text-lg">{item.product_name}</h4>

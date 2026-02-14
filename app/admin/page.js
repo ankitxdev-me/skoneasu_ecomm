@@ -5,18 +5,43 @@ import { adminAPI } from '@/lib/api'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Loader2, DollarSign, ShoppingCart, Package, Users } from 'lucide-react'
 import { toast } from 'sonner'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 export default function AdminDashboardPage() {
     const [stats, setStats] = useState(null)
     const [loading, setLoading] = useState(true)
+    const [timeRange, setTimeRange] = useState('30d')
 
     useEffect(() => {
         fetchStats()
-    }, [])
+    }, [timeRange])
 
     const fetchStats = async () => {
         try {
-            const data = await adminAPI.stats()
+            // Updated to pass time range if API supports it, or just fetch default
+            // Here we assume adminAPI.stats() can take query params or we append it
+            // checking simple string concatenation if the lib function doesn't support params object yet
+            // Looking at api.js, stats: () => fetchAPI('/admin/stats')
+            // asking for range support in api.js or manually appending
+
+            // Since I cannot change api.js easily in this single file replace, 
+            // I will assume adminAPI.stats() needs update OR I can just use fetch directly if urgent,
+            // BUT proper way is to update api.js or use the fact that fetchAPI handles params?
+            // Wait, api.js 'stats' doesn't take args. 
+            // I should update api.js first or use a hack.
+            // Let's rely on updating api.js in a separate step or just do it here if possible?
+            // Actually I should have updated api.js in the previous steps but I missed that the client helper method signatures need update too.
+            // I'll update the call here to use a direct fetch or modify api.js next.
+            // For now, let's try to pass it if I update api.js, but I haven't.
+            // I will update api.js logic in the next step. 
+            // For now, I will write the code here assuming api.js will be updated or I can use a direct fetch workaround if needed?
+            // No, best practice: I will update api.js in next step.
+
+            // Actually, I can use the trick: adminAPI.stats = (params) => ...
+            // But let's just update api.js content after this.
+
+            const data = await adminAPI.stats(timeRange)
             setStats(data)
         } catch (error) {
             toast.error('Failed to load stats')
@@ -36,7 +61,19 @@ export default function AdminDashboardPage() {
 
     return (
         <div className="space-y-8">
-            <h1 className="text-3xl font-serif font-bold text-neutral-900">Dashboard Overview</h1>
+            <div className="flex items-center justify-between">
+                <h1 className="text-3xl font-serif font-bold text-neutral-900">Dashboard Overview</h1>
+                <Select value={timeRange} onValueChange={setTimeRange}>
+                    <SelectTrigger className="w-[180px]">
+                        <SelectValue placeholder="Select range" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="30d">Last 30 Days</SelectItem>
+                        <SelectItem value="6m">Last 6 Months</SelectItem>
+                        <SelectItem value="all">Lifetime</SelectItem>
+                    </SelectContent>
+                </Select>
+            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <StatsCard
@@ -66,24 +103,64 @@ export default function AdminDashboardPage() {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Recent Activity</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <p className="text-neutral-500">No recent activity to show.</p>
-                    </CardContent>
-                </Card>
-                <Card>
+                <Card className="col-span-1 lg:col-span-2">
                     <CardHeader>
                         <CardTitle>Sales Trend</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <p className="text-neutral-500">Chart data unavailable.</p>
+                        <div className="h-[300px] w-full">
+                            {stats?.salesTrend ? (
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart data={stats.salesTrend}>
+                                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                        <XAxis
+                                            dataKey="date"
+                                            tickFormatter={(value) => {
+                                                const date = new Date(value);
+                                                return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                                            }}
+                                            fontSize={12}
+                                            tickLine={false}
+                                            axisLine={false}
+                                        />
+                                        <YAxis
+                                            fontSize={12}
+                                            tickLine={false}
+                                            axisLine={false}
+                                            tickFormatter={(value) => `₹${value}`}
+                                        />
+                                        <Tooltip
+                                            cursor={{ fill: 'transparent' }}
+                                            content={({ active, payload, label }) => {
+                                                if (active && payload && payload.length) {
+                                                    return (
+                                                        <div className="rounded-lg border bg-background p-2 shadow-sm">
+                                                            <div className="grid grid-cols-2 gap-2">
+                                                                <span className="font-medium">{new Date(label).toLocaleDateString()}</span>
+                                                                <span className="font-medium text-right">₹{payload[0].value}</span>
+                                                            </div>
+                                                        </div>
+                                                    )
+                                                }
+                                                return null
+                                            }}
+                                        />
+                                        <Bar
+                                            dataKey="sales"
+                                            fill="#d97706"
+                                            radius={[4, 4, 0, 0]}
+                                        />
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            ) : (
+                                <div className="flex h-full items-center justify-center text-neutral-500">
+                                    No data available
+                                </div>
+                            )}
+                        </div>
                     </CardContent>
                 </Card>
             </div>
-
 
             <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
                 <Card>

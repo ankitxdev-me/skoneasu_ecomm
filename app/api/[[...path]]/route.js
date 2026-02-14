@@ -1,15 +1,30 @@
 import { NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 import { createRazorpayOrder, verifyPaymentSignature } from '@/lib/razorpay'
 
-// Helper function to get user from session
+// Helper function to get user from session and a scoped client
 async function getAuthUser(request) {
   const token = request.headers.get('authorization')?.replace('Bearer ', '')
-  if (!token) return null
+  if (!token) return { user: null, scopedSupabase: supabase }
 
   const { data: { user }, error } = await supabase.auth.getUser(token)
-  if (error) return null
-  return user
+  if (error) return { user: null, scopedSupabase: supabase }
+
+  // Create a scoped client with the user's access token to trigger RLS policies correctly
+  const scopedSupabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    {
+      global: {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      }
+    }
+  )
+
+  return { user, scopedSupabase }
 }
 
 // Helper function to check if user is admin
@@ -83,10 +98,10 @@ async function handleSignOut(request) {
 }
 
 async function handleGetProfile(request) {
-  const user = await getAuthUser(request)
+  const { user, scopedSupabase } = await getAuthUser(request)
   if (!user) throw new Error('Unauthorized')
 
-  const { data, error } = await supabase
+  const { data, error } = await scopedSupabase
     .from('profiles')
     .select('*')
     .eq('id', user.id)
@@ -97,10 +112,10 @@ async function handleGetProfile(request) {
 }
 
 async function handleUpdateProfile(request, body) {
-  const user = await getAuthUser(request)
+  const { user, scopedSupabase } = await getAuthUser(request)
   if (!user) throw new Error('Unauthorized')
 
-  const { data, error } = await supabase
+  const { data, error } = await scopedSupabase
     .from('profiles')
     .update(body)
     .eq('id', user.id)
@@ -141,7 +156,8 @@ async function handleGetProducts(searchParams) {
     *,
     categories:product_categories(category:categories(id, name, slug)),
     images:product_images(id, image_url, sort_order),
-    variants:product_variants(id, variant_type, variant_value, stock, price_modifier)
+    variants:product_variants(id, variant_type, variant_value, stock, price_modifier, attributes, variant_name),
+    reviews:reviews(rating)
   `
 
   // Use !inner for category filtering to filter products by related category
@@ -150,13 +166,25 @@ async function handleGetProducts(searchParams) {
       *,
       categories:product_categories!inner(category:categories(id, name, slug), category_id),
       images:product_images(id, image_url, sort_order),
-      variants:product_variants(id, variant_type, variant_value, stock, price_modifier)
+      variants:product_variants(id, variant_type, variant_value, stock, price_modifier, attributes, variant_name),
+      reviews:reviews(rating)
     `
   }
 
-  let query = supabase
-    .from('products')
-    .select(selectQuery)
+  let query
+  if (searchParams.search) {
+    // If search is present, use the RPC function which returns ranked results
+    query = supabase.rpc('search_products', { keyword: searchParams.search })
+
+    // We need to re-select related data because RPC returns only products columns by default (unless defined otherwise)
+    // Wait, RPC returns SETOF products. We can still join!
+    // But Supabase JS client handles this by chaining select on the RPC result.
+    query = query.select(selectQuery)
+  } else {
+    query = supabase
+      .from('products')
+      .select(selectQuery)
+  }
 
   // Filters
   if (searchParams.category) {
@@ -191,10 +219,6 @@ async function handleGetProducts(searchParams) {
     query = query.lte('price', parseFloat(searchParams.max_price))
   }
 
-  if (searchParams.search) {
-    query = query.or(`name.ilike.%${searchParams.search}%,description.ilike.%${searchParams.search}%`)
-  }
-
   // Sorting
   if (searchParams.sort === 'price_asc') {
     query = query.order('price', { ascending: true })
@@ -218,67 +242,80 @@ async function handleGetProducts(searchParams) {
 
   if (error) throw error
 
-  // Calculate Price Stats (Min/Max) for the current scope (Category)
-  // We do separate small queries to get min/max efficiently
-  let statsQuery = supabase.from('products').select('price')
-
-  // Apply category filter to stats query if present
-  if (searchParams.category) {
-    // We need to use inner join logic for stats too if filtering by category
-    const { data: categoryData } = await supabase
-      .from('categories')
-      .select('id')
-      .eq('slug', searchParams.category)
-      .single()
-
-    if (categoryData && categoryData.id) {
-      // Since we use the product_categories link now, it's complex to filter simply on products table
-      // But we have access to direct category_id in products table as legacy or we need to join
-      // For performance simplicity, let's assume we filter on the products table directly if possible
-      // OR we just get global min/max for now to avoid heavy joins on stats
-      // IMPROVEMENT: Use the same complex logic or just getting global min/max 
-      // User asked "search price", meaning contextual.
-      // Let's try to act on the filtered set.
-
-      // Actually, the joined query above is complex.
-      // Let's do a simpler approach: get global min/max for the scope of "All Products" or "Specific Category" 
-      // Finding min/max with joins is tricky in one go.
-      // Let's just fetch min/max of ALL products for simplicity first, or try to be smart.
-      // If I use the same join logic, it's heavy.
-      // Let's stick to global min/max for the store if no category, and if category is there, try to filter.
-      // Given the migration, products might not have 'category_id' column populated if we removed it, but I didn't remove it.
-      // So I can use 'category_id' column for fast stats if it is still maintained.
-      // But I updated the adding/editing to use the junction table.
-      // So the 'category_id' column on products might be stale or null.
-      // I should rely on the junction table for stats too.
-
-      statsQuery = supabase
-        .from('product_categories')
-        .select(`product:products(price)`)
-        .eq('category_id', categoryData.id)
+  // Calculate ratings
+  data.forEach(product => {
+    if (product.reviews && product.reviews.length > 0) {
+      const avg = product.reviews.reduce((sum, r) => sum + r.rating, 0) / product.reviews.length
+      product.averageRating = parseFloat(avg.toFixed(1))
+      product.reviewCount = product.reviews.length
+    } else {
+      product.averageRating = 0
+      product.reviewCount = 0
     }
-  }
+    // Remove heavy reviews array from list response to save bandwidth, 
+    // or keep it if needed? Better to remove or keep only count/avg if client works that way.
+    // But for now, client might not expect it removed if I used it, but I just added it.
+    delete product.reviews
+  })
 
-  // To get Min
-  // This is getting complicated to do efficiently in Supabase JS client without a custom RPC or heavy fetching.
-  // Alternative: Just return the min/max of the *current page*? No, that's bad UX.
-  // Alternative: Fetch ALL prices (just the price column) and calculate in JS? 
-  // If 1000 products, it's ~4KB data. Acceptable for now.
-
+  // Calculate Price Stats (Min/Max) for the current filtered scope
   let minPrice = 0
   let maxPrice = 1000000
 
   try {
-    let allPricesQuery = supabase.from('products').select('price, product_categories!inner(category_id)')
+    let statsQuery
 
-    if (searchParams.category) {
-      const { data: cat } = await supabase.from('categories').select('id').eq('slug', searchParams.category).single()
-      if (cat) {
-        allPricesQuery = allPricesQuery.eq('product_categories.category_id', cat.id)
-      }
+    // 1. Base Query for Stats (Search vs Normal)
+    if (searchParams.search) {
+      statsQuery = supabase.rpc('search_products', { keyword: searchParams.search }).select('price')
+    } else {
+      statsQuery = supabase.from('products').select('price')
     }
 
-    const { data: prices } = await allPricesQuery
+    // 2. Apply Filters to Stats Query (Must match main query filters!)
+    if (searchParams.category) {
+      const { data: category } = await supabase
+        .from('categories')
+        .select('id')
+        .eq('slug', searchParams.category)
+        .single()
+
+      if (category) {
+        // If we are in "Normal" mode (no search), we need to join to filter by category.
+        // If we are in "Search" mode (RPC), products are returned. We can still filter by category_id if the column exists in the output.
+        // My RPC returns `SETOF products`, so it has `category_id` column if the table has it.
+        // Wait, the products table might NOT have valid category_id if we use the junction table `product_categories`.
+        // If the `products` table has a legacy `category_id`, we can use it.
+        // But if we rely on `product_categories` junction table...
+        // For RPC results: we can embedding is harder.
+        // We can use !inner join in the select? 
+        // `rpc(...).select('price, product_categories!inner(category_id)').eq('product_categories.category_id', ...)`
+
+        // Let's try the robust way:
+        statsQuery = statsQuery.select('price, product_categories!inner(category_id)')
+        statsQuery = statsQuery.eq('product_categories.category_id', category.id)
+      }
+    } else if (!searchParams.search) {
+      // If no search and no category, we don't need to join anything.
+      // Just select('price') from products is enough.
+      // (The code above initialized statsQuery with select('price'))
+    }
+
+    // Apply other filters (featured, etc.) to match what user sees
+    if (searchParams.featured === 'true') statsQuery = statsQuery.eq('featured', true)
+    if (searchParams.best_seller === 'true') statsQuery = statsQuery.eq('best_seller', true)
+    if (searchParams.new_arrival === 'true') statsQuery = statsQuery.eq('new_arrival', true)
+
+    // Note: We DO NOT apply min_price/max_price filters to the Stats Query!
+    // The stats should show the range of *available* products in this category/search, 
+    // NOT restricted by the slider itself (otherwise the slider range would shrink as you drag it!).
+
+    const { data: prices, error: statsError } = await statsQuery
+
+    if (statsError) {
+      console.error('Stats query error:', statsError)
+    }
+
     if (prices && prices.length > 0) {
       const priceValues = prices.map(p => p.price)
       minPrice = Math.min(...priceValues)
@@ -309,12 +346,13 @@ async function handleGetProductBySlug(slug) {
       *,
       categories:product_categories(category:categories(id, name, slug)),
       images:product_images(id, image_url, sort_order),
-      variants:product_variants(id, variant_type, variant_value, stock, price_modifier),
+      variants:product_variants(id, variant_type, variant_value, stock, price_modifier, attributes, variant_name),
       reviews:reviews(
         id,
         rating,
         comment,
         created_at,
+        image_url,
         user:profiles(full_name)
       )
     `)
@@ -339,10 +377,10 @@ async function handleGetProductBySlug(slug) {
 // ============ CART ENDPOINTS ============
 
 async function handleGetCart(request) {
-  const user = await getAuthUser(request)
+  const { user, scopedSupabase } = await getAuthUser(request)
   if (!user) throw new Error('Unauthorized')
 
-  const { data, error } = await supabase
+  const { data, error } = await scopedSupabase
     .from('cart_items')
     .select(`
       *,
@@ -360,7 +398,10 @@ async function handleGetCart(request) {
         variant_type,
         variant_value,
         stock,
-        price_modifier
+        stock,
+        price_modifier,
+        attributes,
+        variant_name
       )
     `)
     .eq('user_id', user.id)
@@ -370,7 +411,7 @@ async function handleGetCart(request) {
 }
 
 async function handleAddToCart(request, body) {
-  const user = await getAuthUser(request)
+  const { user, scopedSupabase } = await getAuthUser(request)
   if (!user) throw new Error('Unauthorized')
 
   const { product_id, variant_id, quantity } = body
@@ -420,12 +461,12 @@ async function handleAddToCart(request, body) {
 }
 
 async function handleUpdateCartItem(request, itemId, body) {
-  const user = await getAuthUser(request)
+  const { user, scopedSupabase } = await getAuthUser(request)
   if (!user) throw new Error('Unauthorized')
 
   const { quantity } = body
 
-  const { data, error } = await supabase
+  const { data, error } = await scopedSupabase
     .from('cart_items')
     .update({ quantity })
     .eq('id', itemId)
@@ -438,10 +479,10 @@ async function handleUpdateCartItem(request, itemId, body) {
 }
 
 async function handleRemoveFromCart(request, itemId) {
-  const user = await getAuthUser(request)
+  const { user, scopedSupabase } = await getAuthUser(request)
   if (!user) throw new Error('Unauthorized')
 
-  const { error } = await supabase
+  const { error } = await scopedSupabase
     .from('cart_items')
     .delete()
     .eq('id', itemId)
@@ -452,10 +493,10 @@ async function handleRemoveFromCart(request, itemId) {
 }
 
 async function handleClearCart(request) {
-  const user = await getAuthUser(request)
+  const { user, scopedSupabase } = await getAuthUser(request)
   if (!user) throw new Error('Unauthorized')
 
-  const { error } = await supabase
+  const { error } = await scopedSupabase
     .from('cart_items')
     .delete()
     .eq('user_id', user.id)
@@ -467,10 +508,10 @@ async function handleClearCart(request) {
 // ============ WISHLIST ENDPOINTS ============
 
 async function handleGetWishlist(request) {
-  const user = await getAuthUser(request)
+  const { user, scopedSupabase } = await getAuthUser(request)
   if (!user) throw new Error('Unauthorized')
 
-  const { data, error } = await supabase
+  const { data, error } = await scopedSupabase
     .from('wishlists')
     .select(`
       *,
@@ -490,12 +531,12 @@ async function handleGetWishlist(request) {
 }
 
 async function handleAddToWishlist(request, body) {
-  const user = await getAuthUser(request)
+  const { user, scopedSupabase } = await getAuthUser(request)
   if (!user) throw new Error('Unauthorized')
 
   const { product_id } = body
 
-  const { data, error } = await supabase
+  const { data, error } = await scopedSupabase
     .from('wishlists')
     .insert({
       user_id: user.id,
@@ -514,10 +555,10 @@ async function handleAddToWishlist(request, body) {
 }
 
 async function handleRemoveFromWishlist(request, productId) {
-  const user = await getAuthUser(request)
+  const { user, scopedSupabase } = await getAuthUser(request)
   if (!user) throw new Error('Unauthorized')
 
-  const { error } = await supabase
+  const { error } = await scopedSupabase
     .from('wishlists')
     .delete()
     .eq('user_id', user.id)
@@ -530,10 +571,10 @@ async function handleRemoveFromWishlist(request, productId) {
 // ============ ORDER ENDPOINTS ============
 
 async function handleGetOrders(request) {
-  const user = await getAuthUser(request)
+  const { user, scopedSupabase } = await getAuthUser(request)
   if (!user) throw new Error('Unauthorized')
 
-  const { data, error } = await supabase
+  const { data, error } = await scopedSupabase
     .from('orders')
     .select(`
       *,
@@ -554,10 +595,10 @@ async function handleGetOrders(request) {
 }
 
 async function handleGetOrderById(request, orderId) {
-  const user = await getAuthUser(request)
+  const { user, scopedSupabase } = await getAuthUser(request)
   if (!user) throw new Error('Unauthorized')
 
-  const { data, error } = await supabase
+  const { data, error } = await scopedSupabase
     .from('orders')
     .select(`
       *,
@@ -579,13 +620,13 @@ async function handleGetOrderById(request, orderId) {
 }
 
 async function handleCreateOrder(request, body) {
-  const user = await getAuthUser(request)
+  const { user, scopedSupabase } = await getAuthUser(request)
   if (!user) throw new Error('Unauthorized')
 
   const { shipping_address, billing_address, coupon_code, payment_method } = body
 
   // Get cart items
-  const { data: cartItems } = await supabase
+  const { data: cartItems } = await scopedSupabase
     .from('cart_items')
     .select(`
       *,
@@ -677,17 +718,29 @@ async function handleCreateOrder(request, body) {
   // Apply coupon if provided
   let couponDiscount = 0
   if (coupon_code) {
-    const { data: coupon } = await supabase
+    // 1. Fetch coupon details first for validation that doesn't require atomicity (amount check)
+    const { data: couponPreview } = await supabase
       .from('coupons')
       .select('*')
       .eq('code', coupon_code)
       .eq('active', true)
       .single()
 
-    if (coupon) {
-      if (total >= (coupon.min_order_amount || 0)) {
+    if (couponPreview) {
+      // Check min order amount against SUBTOTAL (not total with shipping)
+      if (subtotalBeforeShipping >= (couponPreview.min_order_amount || 0)) {
+
+        // 2. Call RPC to atomically check limit/expiry and increment
+        const { data: coupon, error: couponError } = await supabase
+          .rpc('apply_coupon', { coupon_code })
+
+        if (couponError) {
+          throw new Error(couponError.message)
+        }
+
+        // 3. Calculate Discount
         if (coupon.discount_type === 'percent') {
-          couponDiscount = (total * coupon.discount_value) / 100
+          couponDiscount = (subtotalBeforeShipping * coupon.discount_value) / 100
           if (coupon.max_discount_amount) {
             couponDiscount = Math.min(couponDiscount, coupon.max_discount_amount)
           }
@@ -695,11 +748,8 @@ async function handleCreateOrder(request, body) {
           couponDiscount = coupon.discount_value
         }
 
-        // Update coupon usage
-        await supabase
-          .from('coupons')
-          .update({ used_count: coupon.used_count + 1 })
-          .eq('id', coupon.id)
+        // Cap at subtotal
+        couponDiscount = Math.min(couponDiscount, subtotalBeforeShipping)
       }
     }
   }
@@ -708,7 +758,7 @@ async function handleCreateOrder(request, body) {
 
   // Auto-save address if not exists
   if (shipping_address) {
-    const { data: existingAddress } = await supabase
+    const { data: existingAddress } = await scopedSupabase
       .from('addresses')
       .select('id')
       .eq('user_id', user.id)
@@ -717,7 +767,7 @@ async function handleCreateOrder(request, body) {
       .single()
 
     if (!existingAddress) {
-      await supabase
+      await scopedSupabase
         .from('addresses')
         .insert({
           user_id: user.id,
@@ -735,7 +785,7 @@ async function handleCreateOrder(request, body) {
   }
 
   // Create order
-  const { data: order, error: orderError } = await supabase
+  const { data: order, error: orderError } = await scopedSupabase
     .from('orders')
     .insert({
       user_id: user.id,
@@ -748,7 +798,8 @@ async function handleCreateOrder(request, body) {
       payment_method: payment_method || 'online',
       shipping_address,
       billing_address: billing_address || shipping_address,
-      coupon_code
+      coupon_code,
+      notes: body.notes
     })
     .select()
     .single()
@@ -761,7 +812,7 @@ async function handleCreateOrder(request, body) {
     order_id: order.id
   }))
 
-  const { error: itemsError } = await supabase
+  const { error: itemsError } = await scopedSupabase
     .from('order_items')
     .insert(itemsWithOrderId)
 
@@ -785,7 +836,7 @@ async function handleCreateOrder(request, body) {
     }
 
     // Clear cart
-    await supabase
+    await scopedSupabase
       .from('cart_items')
       .delete()
       .eq('user_id', user.id)
@@ -801,7 +852,7 @@ async function handleCreateOrder(request, body) {
   )
 
   if (razorpayOrder.success) {
-    await supabase
+    await scopedSupabase
       .from('orders')
       .update({ razorpay_order_id: razorpayOrder.orderId })
       .eq('id', order.id)
@@ -814,7 +865,7 @@ async function handleCreateOrder(request, body) {
 }
 
 async function handleVerifyPayment(request, body) {
-  const user = await getAuthUser(request)
+  const { user, scopedSupabase } = await getAuthUser(request)
   if (!user) throw new Error('Unauthorized')
 
   const { order_id, payment_id, signature } = body
@@ -827,7 +878,7 @@ async function handleVerifyPayment(request, body) {
   }
 
   // Update order
-  const { data, error } = await supabase
+  const { data, error } = await scopedSupabase
     .from('orders')
     .update({
       payment_status: 'paid',
@@ -843,7 +894,7 @@ async function handleVerifyPayment(request, body) {
   if (error) throw error
 
   // Deduct stock
-  const { data: orderItems } = await supabase
+  const { data: orderItems } = await scopedSupabase
     .from('order_items')
     .select('*')
     .eq('order_id', data.id)
@@ -863,7 +914,7 @@ async function handleVerifyPayment(request, body) {
   }
 
   // Clear cart
-  await supabase
+  await scopedSupabase
     .from('cart_items')
     .delete()
     .eq('user_id', user.id)
@@ -873,19 +924,38 @@ async function handleVerifyPayment(request, body) {
 
 // ============ REVIEW ENDPOINTS ============
 
+async function handleGetPinnedReviews() {
+  const { data, error } = await supabase
+    .from('reviews')
+    .select(`
+      *,
+      user:profiles(full_name, avatar_url),
+      product:products(name, slug, images:product_images(image_url))
+    `)
+    .eq('is_pinned', true)
+    .limit(3)
+    .order('created_at', { ascending: false })
+
+  if (error) throw error
+  return data
+}
+
 async function handleCreateReview(request, body) {
-  const user = await getAuthUser(request)
+  const { user, scopedSupabase } = await getAuthUser(request)
   if (!user) throw new Error('Unauthorized')
 
   const { product_id, rating, comment } = body
 
-  const { data, error } = await supabase
+  const { data, error } = await scopedSupabase
     .from('reviews')
     .insert({
       user_id: user.id,
       product_id,
       rating,
-      comment
+      product_id,
+      rating,
+      comment,
+      image_url: body.image_url
     })
     .select()
     .single()
@@ -900,12 +970,12 @@ async function handleCreateReview(request, body) {
 }
 
 async function handleUpdateReview(request, reviewId, body) {
-  const user = await getAuthUser(request)
+  const { user, scopedSupabase } = await getAuthUser(request)
   if (!user) throw new Error('Unauthorized')
 
   const { rating, comment } = body
 
-  const { data, error } = await supabase
+  const { data, error } = await scopedSupabase
     .from('reviews')
     .update({ rating, comment })
     .eq('id', reviewId)
@@ -918,10 +988,10 @@ async function handleUpdateReview(request, reviewId, body) {
 }
 
 async function handleDeleteReview(request, reviewId) {
-  const user = await getAuthUser(request)
+  const { user, scopedSupabase } = await getAuthUser(request)
   if (!user) throw new Error('Unauthorized')
 
-  const { error } = await supabase
+  const { error } = await scopedSupabase
     .from('reviews')
     .delete()
     .eq('id', reviewId)
@@ -931,13 +1001,79 @@ async function handleDeleteReview(request, reviewId) {
   return { message: 'Review deleted' }
 }
 
+async function handleAdminGetReviews(request) {
+  const { user, scopedSupabase } = await getAuthUser(request)
+  if (!user || !(await isAdmin(user.id))) throw new Error('Unauthorized')
+
+  const { data, error } = await scopedSupabase
+    .from('reviews')
+    .select(`
+      *,
+      user:profiles(full_name, email),
+      product:products(name, slug)
+    `)
+    .order('created_at', { ascending: false })
+
+  if (error) throw error
+  return data
+}
+
+async function handleAdminDeleteReview(request, reviewId) {
+  const { user, scopedSupabase } = await getAuthUser(request)
+  if (!user || !(await isAdmin(user.id))) throw new Error('Unauthorized')
+
+  const { error } = await scopedSupabase
+    .from('reviews')
+    .delete()
+    .eq('id', reviewId)
+
+  if (error) throw error
+  return { message: 'Review deleted' }
+}
+
+async function handleAdminTogglePinReview(request, reviewId) {
+  const { user, scopedSupabase } = await getAuthUser(request)
+  if (!user || !(await isAdmin(user.id))) throw new Error('Unauthorized')
+
+  // Check current state
+  const { data: review } = await scopedSupabase
+    .from('reviews')
+    .select('is_pinned')
+    .eq('id', reviewId)
+    .single()
+
+  const newState = !review.is_pinned
+
+  if (newState) {
+    // Check limit
+    const { count } = await scopedSupabase
+      .from('reviews')
+      .select('*', { count: 'exact', head: true })
+      .eq('is_pinned', true)
+
+    if (count >= 3) {
+      throw new Error('Maximum 3 reviews can be pinned')
+    }
+  }
+
+  const { data, error } = await scopedSupabase
+    .from('reviews')
+    .update({ is_pinned: newState })
+    .eq('id', reviewId)
+    .select()
+    .single()
+
+  if (error) throw error
+  return data
+}
+
 // ============ ADDRESS ENDPOINTS ============
 
 async function handleGetAddresses(request) {
-  const user = await getAuthUser(request)
+  const { user, scopedSupabase } = await getAuthUser(request)
   if (!user) throw new Error('Unauthorized')
 
-  const { data, error } = await supabase
+  const { data, error } = await scopedSupabase
     .from('addresses')
     .select('*')
     .eq('user_id', user.id)
@@ -948,10 +1084,10 @@ async function handleGetAddresses(request) {
 }
 
 async function handleCreateAddress(request, body) {
-  const user = await getAuthUser(request)
+  const { user, scopedSupabase } = await getAuthUser(request)
   if (!user) throw new Error('Unauthorized')
 
-  const { data, error } = await supabase
+  const { data, error } = await scopedSupabase
     .from('addresses')
     .insert({
       user_id: user.id,
@@ -965,10 +1101,10 @@ async function handleCreateAddress(request, body) {
 }
 
 async function handleUpdateAddress(request, addressId, body) {
-  const user = await getAuthUser(request)
+  const { user, scopedSupabase } = await getAuthUser(request)
   if (!user) throw new Error('Unauthorized')
 
-  const { data, error } = await supabase
+  const { data, error } = await scopedSupabase
     .from('addresses')
     .update(body)
     .eq('id', addressId)
@@ -981,10 +1117,10 @@ async function handleUpdateAddress(request, addressId, body) {
 }
 
 async function handleDeleteAddress(request, addressId) {
-  const user = await getAuthUser(request)
+  const { user, scopedSupabase } = await getAuthUser(request)
   if (!user) throw new Error('Unauthorized')
 
-  const { error } = await supabase
+  const { error } = await scopedSupabase
     .from('addresses')
     .delete()
     .eq('id', addressId)
@@ -997,12 +1133,12 @@ async function handleDeleteAddress(request, addressId) {
 // ============ ADMIN ENDPOINTS ============
 
 async function handleAdminGetProducts(request) {
-  const user = await getAuthUser(request)
+  const { user, scopedSupabase } = await getAuthUser(request)
   if (!user || !(await isAdmin(user.id))) {
     throw new Error('Unauthorized')
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await scopedSupabase
     .from('products')
     .select(`
       *,
@@ -1017,7 +1153,7 @@ async function handleAdminGetProducts(request) {
 }
 
 async function handleAdminCreateProduct(request, body) {
-  const user = await getAuthUser(request)
+  const { user, scopedSupabase } = await getAuthUser(request)
   if (!user || !(await isAdmin(user.id))) {
     throw new Error('Unauthorized')
   }
@@ -1028,7 +1164,7 @@ async function handleAdminCreateProduct(request, body) {
   const slug = productData.name.toLowerCase().replace(/ /g, '-').replace(/[^\w-]+/g, '')
 
   // Create product
-  const { data: product, error: productError } = await supabase
+  const { data: product, error: productError } = await scopedSupabase
     .from('products')
     .insert({
       ...productData,
@@ -1046,7 +1182,7 @@ async function handleAdminCreateProduct(request, body) {
       category_id: catId
     }))
 
-    await supabase.from('product_categories').insert(categoryData)
+    await scopedSupabase.from('product_categories').insert(categoryData)
   }
 
   // Add images
@@ -1057,24 +1193,30 @@ async function handleAdminCreateProduct(request, body) {
       sort_order: idx + 1
     }))
 
-    await supabase.from('product_images').insert(imageData)
+    await scopedSupabase.from('product_images').insert(imageData)
   }
 
   // Add variants
   if (variants && variants.length > 0) {
     const variantData = variants.map(v => ({
       product_id: product.id,
-      ...v
+      variant_type: v.variant_type || 'Combination',
+      variant_value: v.variant_value || v.variant_name || 'Default',
+      price_modifier: v.price_modifier || 0,
+      stock: v.stock || 0,
+      attributes: v.attributes || {},
+      variant_name: v.variant_name
     }))
 
-    await supabase.from('product_variants').insert(variantData)
+    const { error: variantError } = await scopedSupabase.from('product_variants').insert(variantData)
+    if (variantError) throw variantError
   }
 
   return product
 }
 
 async function handleAdminUpdateProduct(request, productId, body) {
-  const user = await getAuthUser(request)
+  const { user, scopedSupabase } = await getAuthUser(request)
   if (!user || !(await isAdmin(user.id))) {
     throw new Error('Unauthorized')
   }
@@ -1082,7 +1224,7 @@ async function handleAdminUpdateProduct(request, productId, body) {
   const { images, variants, category_ids, ...productData } = body
 
   // Update product
-  const { data, error } = await supabase
+  const { data, error } = await scopedSupabase
     .from('products')
     .update(productData)
     .eq('id', productId)
@@ -1094,7 +1236,7 @@ async function handleAdminUpdateProduct(request, productId, body) {
   // Update categories if provided
   if (category_ids) {
     // Remove existing
-    await supabase.from('product_categories').delete().eq('product_id', productId)
+    await scopedSupabase.from('product_categories').delete().eq('product_id', productId)
 
     // Add new
     if (category_ids.length > 0) {
@@ -1103,13 +1245,13 @@ async function handleAdminUpdateProduct(request, productId, body) {
         category_id: catId
       }))
 
-      await supabase.from('product_categories').insert(categoryData)
+      await scopedSupabase.from('product_categories').insert(categoryData)
     }
   }
 
   // Update images if provided
   if (images) {
-    await supabase.from('product_images').delete().eq('product_id', productId)
+    await scopedSupabase.from('product_images').delete().eq('product_id', productId)
 
     const imageData = images.map((img, idx) => ({
       product_id: productId,
@@ -1117,19 +1259,40 @@ async function handleAdminUpdateProduct(request, productId, body) {
       sort_order: idx + 1
     }))
 
-    await supabase.from('product_images').insert(imageData)
+    await scopedSupabase.from('product_images').insert(imageData)
+  }
+
+  // Update variants if provided
+  if (variants) {
+    // For simplicity, remove existing and add new
+    await scopedSupabase.from('product_variants').delete().eq('product_id', productId)
+
+    if (variants.length > 0) {
+      const variantData = variants.map(v => ({
+        product_id: productId,
+        variant_type: v.variant_type || 'Combination',
+        variant_value: v.variant_value || v.variant_name || 'Default',
+        price_modifier: v.price_modifier || 0,
+        stock: v.stock || 0,
+        attributes: v.attributes || {},
+        variant_name: v.variant_name
+      }))
+
+      const { error: variantError } = await scopedSupabase.from('product_variants').insert(variantData)
+      if (variantError) throw variantError
+    }
   }
 
   return data
 }
 
 async function handleAdminDeleteProduct(request, productId) {
-  const user = await getAuthUser(request)
+  const { user, scopedSupabase } = await getAuthUser(request)
   if (!user || !(await isAdmin(user.id))) {
     throw new Error('Unauthorized')
   }
 
-  const { error } = await supabase
+  const { error } = await scopedSupabase
     .from('products')
     .delete()
     .eq('id', productId)
@@ -1139,12 +1302,12 @@ async function handleAdminDeleteProduct(request, productId) {
 }
 
 async function handleAdminGetOrders(request) {
-  const user = await getAuthUser(request)
+  const { user, scopedSupabase } = await getAuthUser(request)
   if (!user || !(await isAdmin(user.id))) {
     throw new Error('Unauthorized')
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await scopedSupabase
     .from('orders')
     .select(`
       *,
@@ -1165,7 +1328,7 @@ async function handleAdminGetOrders(request) {
 }
 
 async function handleAdminUpdateOrderStatus(request, orderId, body) {
-  const user = await getAuthUser(request)
+  const { user, scopedSupabase } = await getAuthUser(request)
   if (!user || !(await isAdmin(user.id))) {
     throw new Error('Unauthorized')
   }
@@ -1176,7 +1339,7 @@ async function handleAdminUpdateOrderStatus(request, orderId, body) {
   if (status) updates.status = status
   if (payment_status) updates.payment_status = payment_status
 
-  const { data, error } = await supabase
+  const { data, error } = await scopedSupabase
     .from('orders')
     .update(updates)
     .eq('id', orderId)
@@ -1188,40 +1351,93 @@ async function handleAdminUpdateOrderStatus(request, orderId, body) {
 }
 
 async function handleAdminGetStats(request) {
-  const user = await getAuthUser(request)
+  const { user, scopedSupabase } = await getAuthUser(request)
   if (!user || !(await isAdmin(user.id))) {
     throw new Error('Unauthorized')
   }
 
-  // Get total orders
-  const { count: totalOrders } = await supabase
+  const { searchParams } = new URL(request.url)
+  const range = searchParams.get('range') || '30d'
+
+  // Calculate start date based on range
+  let startDate = new Date()
+  if (range === '30d') {
+    startDate.setDate(startDate.getDate() - 30)
+  } else if (range === '6m') {
+    startDate.setMonth(startDate.getMonth() - 6)
+  } else if (range === 'all') {
+    startDate = new Date(0) // Beginning of time
+  } else {
+    // Default to 30d if invalid
+    startDate.setDate(startDate.getDate() - 30)
+  }
+
+  // Get total orders (lifetime)
+  const { count: orderCount } = await scopedSupabase
     .from('orders')
     .select('*', { count: 'exact', head: true })
 
-  // Get total revenue
-  const { data: orders } = await supabase
+  // Get total revenue (lifetime)
+  const { data: allPaidOrders } = await scopedSupabase
     .from('orders')
     .select('total_amount')
-    .eq('payment_status', 'paid')
+    .neq('status', 'cancelled')
+  // Removed .eq('payment_status', 'paid') to include COD/Pending orders as "Sales"
 
-  const totalRevenue = orders?.reduce((sum, o) => sum + parseFloat(o.total_amount), 0) || 0
+  const totalRevenue = allPaidOrders?.reduce((sum, o) => sum + parseFloat(o.total_amount), 0) || 0
+
+  // Get orders for sales trend (filtered by range)
+  const { data: rangeOrders } = await scopedSupabase
+    .from('orders')
+    .select('total_amount, created_at')
+    .neq('status', 'cancelled')
+    // Removed .eq('payment_status', 'paid') here too
+    .gte('created_at', startDate.toISOString())
+    .order('created_at', { ascending: true })
+
+  // Aggregate sales by date
+  const salesMap = {}
+
+  // Initialize map with 0 for all days in range if 30d (optional, but good for charts)
+  // For 6m/all, it might be too many points to fill zeros, so we might just show days with sales or aggregate by month.
+  // For simplicity and "Sales vs Day" request, let's aggregate by day.
+
+  if (range === '30d') {
+    for (let i = 0; i < 30; i++) {
+      const d = new Date()
+      d.setDate(d.getDate() - i)
+      const dateStr = d.toISOString().split('T')[0]
+      salesMap[dateStr] = 0
+    }
+  }
+
+  rangeOrders?.forEach(order => {
+    const dateStr = new Date(order.created_at).toISOString().split('T')[0]
+    salesMap[dateStr] = (salesMap[dateStr] || 0) + parseFloat(order.total_amount)
+  })
+
+  // Convert to array
+  const salesTrend = Object.entries(salesMap)
+    .map(([date, sales]) => ({ date, sales }))
+    .sort((a, b) => a.date.localeCompare(b.date))
 
   // Get total products
-  const { count: totalProducts } = await supabase
+  const { count: productCount } = await scopedSupabase
     .from('products')
     .select('*', { count: 'exact', head: true })
 
   // Get total customers
-  const { count: totalCustomers } = await supabase
+  const { count: customerCount } = await scopedSupabase
     .from('profiles')
     .select('*', { count: 'exact', head: true })
     .eq('role', 'user')
 
   return {
-    totalOrders,
+    orderCount,
     totalRevenue,
-    totalProducts,
-    totalCustomers
+    productCount,
+    customerCount,
+    salesTrend
   }
 }
 
@@ -1362,6 +1578,10 @@ export async function GET(request, context) {
       return NextResponse.json(await handleGetAddresses(request))
     }
 
+    if (path[0] === 'reviews') {
+      if (path[1] === 'pinned') return NextResponse.json(await handleGetPinnedReviews())
+    }
+
     if (path[0] === 'support') {
       if (path[1]) {
         return NextResponse.json(await handleGetSupportTicketDetails(request, path[1]))
@@ -1392,6 +1612,9 @@ export async function GET(request, context) {
         }
         return NextResponse.json(await handleAdminGetSupportTickets(request))
       }
+      if (path[1] === 'reviews') {
+        return NextResponse.json(await handleAdminGetReviews(request))
+      }
     }
 
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -1409,13 +1632,13 @@ export async function GET(request, context) {
 
 
 async function handleAdminCreateCategory(request, body) {
-  const user = await getAuthUser(request)
+  const { user, scopedSupabase } = await getAuthUser(request)
   if (!user || !(await isAdmin(user.id))) throw new Error('Unauthorized')
 
   const { name, description, image_url, is_main } = body
   const slug = name.toLowerCase().replace(/ /g, '-').replace(/[^\w-]+/g, '')
 
-  const { data, error } = await supabase
+  const { data, error } = await scopedSupabase
     .from('categories')
     .insert({ name, slug, description, image_url, is_main: is_main || false })
     .select()
@@ -1426,10 +1649,10 @@ async function handleAdminCreateCategory(request, body) {
 }
 
 async function handleAdminUpdateCategory(request, categoryId, body) {
-  const user = await getAuthUser(request)
+  const { user, scopedSupabase } = await getAuthUser(request)
   if (!user || !(await isAdmin(user.id))) throw new Error('Unauthorized')
 
-  const { data, error } = await supabase
+  const { data, error } = await scopedSupabase
     .from('categories')
     .update(body)
     .eq('id', categoryId)
@@ -1441,10 +1664,10 @@ async function handleAdminUpdateCategory(request, categoryId, body) {
 }
 
 async function handleAdminDeleteCategory(request, categoryId) {
-  const user = await getAuthUser(request)
+  const { user, scopedSupabase } = await getAuthUser(request)
   if (!user || !(await isAdmin(user.id))) throw new Error('Unauthorized')
 
-  const { error } = await supabase
+  const { error } = await scopedSupabase
     .from('categories')
     .delete()
     .eq('id', categoryId)
@@ -1454,10 +1677,10 @@ async function handleAdminDeleteCategory(request, categoryId) {
 }
 
 async function handleAdminGetCustomers(request) {
-  const user = await getAuthUser(request)
+  const { user, scopedSupabase } = await getAuthUser(request)
   if (!user || !(await isAdmin(user.id))) throw new Error('Unauthorized')
 
-  const { data, error } = await supabase
+  const { data, error } = await scopedSupabase
     .from('profiles')
     .select('id, full_name, email, phone, role, created_at, avatar_url')
     .eq('role', 'user')
@@ -1468,10 +1691,10 @@ async function handleAdminGetCustomers(request) {
 }
 
 async function handleAdminGetCoupons(request) {
-  const user = await getAuthUser(request)
+  const { user, scopedSupabase } = await getAuthUser(request)
   if (!user || !(await isAdmin(user.id))) throw new Error('Unauthorized')
 
-  const { data, error } = await supabase
+  const { data, error } = await scopedSupabase
     .from('coupons')
     .select('*')
     .order('created_at', { ascending: false })
@@ -1483,11 +1706,11 @@ async function handleAdminGetCoupons(request) {
 
 
 async function handleAdminGetSupportTickets(request) {
-  const user = await getAuthUser(request)
+  const { user, scopedSupabase } = await getAuthUser(request)
   if (!user || !(await isAdmin(user.id))) throw new Error('Unauthorized')
 
-  // Use RPC to bypass RLS issues, as the server-side client might not hold the session
-  const { data, error } = await supabase.rpc('get_all_support_tickets_admin')
+  // Use RPC to bypass RLS issues - scoped client should work better now
+  const { data, error } = await scopedSupabase.rpc('get_all_support_tickets_admin')
 
   if (error) throw error
 
@@ -1502,17 +1725,17 @@ async function handleAdminGetSupportTickets(request) {
 }
 
 async function handleAdminGetSupportTicketDetails(request, ticketId) {
-  const user = await getAuthUser(request)
+  const { user, scopedSupabase } = await getAuthUser(request)
   if (!user || !(await isAdmin(user.id))) throw new Error('Unauthorized')
 
-  const { data, error } = await supabase.rpc('get_support_ticket_details_admin', { p_ticket_id: ticketId })
+  const { data, error } = await scopedSupabase.rpc('get_support_ticket_details_admin', { p_ticket_id: ticketId })
 
   if (error) throw error
   return data
 }
 
 async function handleAdminCreateCoupon(request, body) {
-  const user = await getAuthUser(request)
+  const { user, scopedSupabase } = await getAuthUser(request)
   if (!user || !(await isAdmin(user.id))) throw new Error('Unauthorized')
 
   const {
@@ -1525,7 +1748,7 @@ async function handleAdminCreateCoupon(request, body) {
     usage_limit
   } = body
 
-  const { data, error } = await supabase
+  const { data, error } = await scopedSupabase
     .from('coupons')
     .insert({
       code: code.toUpperCase(),
@@ -1546,10 +1769,10 @@ async function handleAdminCreateCoupon(request, body) {
 }
 
 async function handleAdminDeleteCoupon(request, couponId) {
-  const user = await getAuthUser(request)
+  const { user, scopedSupabase } = await getAuthUser(request)
   if (!user || !(await isAdmin(user.id))) throw new Error('Unauthorized')
 
-  const { error } = await supabase
+  const { error } = await scopedSupabase
     .from('coupons')
     .delete()
     .eq('id', couponId)
@@ -1561,14 +1784,14 @@ async function handleAdminDeleteCoupon(request, couponId) {
 // ... (previous code)
 
 async function handleRequestCancellation(request, orderId, body) {
-  const user = await getAuthUser(request)
+  const { user, scopedSupabase } = await getAuthUser(request)
   if (!user) throw new Error('Unauthorized')
   const { reason } = body
 
-  const { data: order } = await supabase.from('orders').select('id, user_id').eq('id', orderId).single()
+  const { data: order } = await scopedSupabase.from('orders').select('id, user_id').eq('id', orderId).single()
   if (!order || order.user_id !== user.id) throw new Error('Order not found')
 
-  const { data, error } = await supabase.from('orders')
+  const { data, error } = await scopedSupabase.from('orders')
     .update({ cancellation_status: 'requested', cancellation_reason: reason })
     .eq('id', orderId)
     .select().single()
@@ -1578,14 +1801,14 @@ async function handleRequestCancellation(request, orderId, body) {
 }
 
 async function handleRequestAddressChange(request, orderId, body) {
-  const user = await getAuthUser(request)
+  const { user, scopedSupabase } = await getAuthUser(request)
   if (!user) throw new Error('Unauthorized')
   const { new_address } = body
 
-  const { data: order } = await supabase.from('orders').select('id, user_id').eq('id', orderId).single()
+  const { data: order } = await scopedSupabase.from('orders').select('id, user_id').eq('id', orderId).single()
   if (!order || order.user_id !== user.id) throw new Error('Order not found')
 
-  const { data, error } = await supabase.from('orders')
+  const { data, error } = await scopedSupabase.from('orders')
     .update({ address_change_status: 'requested', new_shipping_address: new_address })
     .eq('id', orderId)
     .select().single()
@@ -1599,7 +1822,7 @@ async function handleRequestAddressChange(request, orderId, body) {
 // ...
 
 async function handleAdminReplyTicket(request, ticketId, body) {
-  const user = await getAuthUser(request)
+  const { user, scopedSupabase } = await getAuthUser(request)
   if (!user || !(await isAdmin(user.id))) throw new Error('Unauthorized')
 
   const { message, attachments, status } = body
@@ -1607,7 +1830,7 @@ async function handleAdminReplyTicket(request, ticketId, body) {
   // Use RPC to bypass RLS (Robust against missing Service Role Key)
   // If message provided, use the reply RPC
   if (message || (attachments && attachments.length > 0)) {
-    const { error } = await supabase.rpc('admin_reply_to_ticket', {
+    const { error } = await scopedSupabase.rpc('admin_reply_to_ticket', {
       p_ticket_id: ticketId,
       p_sender_id: user.id,
       p_message: message || '',
@@ -1617,7 +1840,7 @@ async function handleAdminReplyTicket(request, ticketId, body) {
     if (error) throw error
   } else if (status) {
     // Just status update
-    const { error } = await supabase.rpc('admin_update_ticket_status', {
+    const { error } = await scopedSupabase.rpc('admin_update_ticket_status', {
       p_ticket_id: ticketId,
       p_status: status
     })
@@ -1628,7 +1851,7 @@ async function handleAdminReplyTicket(request, ticketId, body) {
 }
 
 async function handleAdminCancellation(request, orderId, body) {
-  const user = await getAuthUser(request)
+  const { user, scopedSupabase } = await getAuthUser(request)
   if (!user || !(await isAdmin(user.id))) throw new Error('Unauthorized')
   const { status } = body
 
@@ -1637,25 +1860,25 @@ async function handleAdminCancellation(request, orderId, body) {
     updateData.status = 'cancelled'
   }
 
-  const { data, error } = await supabase.from('orders').update(updateData).eq('id', orderId).select().single()
+  const { data, error } = await scopedSupabase.from('orders').update(updateData).eq('id', orderId).select().single()
   if (error) throw error
   return data
 }
 
 async function handleAdminAddressChange(request, orderId, body) {
-  const user = await getAuthUser(request)
+  const { user, scopedSupabase } = await getAuthUser(request)
   if (!user || !(await isAdmin(user.id))) throw new Error('Unauthorized')
   const { status } = body
 
   let updateData = { address_change_status: status }
   if (status === 'approved') {
-    const { data: order } = await supabase.from('orders').select('new_shipping_address').eq('id', orderId).single()
+    const { data: order } = await scopedSupabase.from('orders').select('new_shipping_address').eq('id', orderId).single()
     if (order && order.new_shipping_address) {
       updateData.shipping_address = order.new_shipping_address
     }
   }
 
-  const { data, error } = await supabase.from('orders').update(updateData).eq('id', orderId).select().single()
+  const { data, error } = await scopedSupabase.from('orders').update(updateData).eq('id', orderId).select().single()
   if (error) throw error
   return data
 }
@@ -1685,7 +1908,10 @@ export async function POST(request, context) {
       if (path[2] === 'address-change') return NextResponse.json(await handleRequestAddressChange(request, path[1], body))
     }
 
-    if (path[0] === 'reviews') return NextResponse.json(await handleCreateReview(request, body))
+    if (path[0] === 'reviews') {
+      if (path[1] === 'pinned') return NextResponse.json(await handleGetPinnedReviews())
+      return NextResponse.json(await handleCreateReview(request, body))
+    }
     if (path[0] === 'addresses') return NextResponse.json(await handleCreateAddress(request, body))
     if (path[0] === 'coupons' && path[1] === 'validate') return NextResponse.json(await handleValidateCoupon(body))
 
@@ -1697,6 +1923,10 @@ export async function POST(request, context) {
       if (path[1] === 'support' && path[2]) {
         if (path[3] === 'reply') return NextResponse.json(await handleAdminReplyTicket(request, path[2], body))
         if (path[3] === 'status') return NextResponse.json(await handleAdminReplyTicket(request, path[2], { status: body.status }))
+      }
+      if (path[1] === 'reviews') {
+        if (path[3] === 'pin') return NextResponse.json(await handleAdminTogglePinReview(request, path[2]))
+        return NextResponse.json(await handleAdminGetReviews(request))
       }
     }
 
@@ -1723,13 +1953,10 @@ export async function PUT(request, context) {
     if (path[0] === 'admin') {
       if (path[1] === 'products' && path[2]) return NextResponse.json(await handleAdminUpdateProduct(request, path[2], body))
       if (path[1] === 'categories' && path[2]) return NextResponse.json(await handleAdminUpdateCategory(request, path[2], body))
-      if (path[1] === 'orders' && path[2]) {
-        if (path[3] === 'cancellation') return NextResponse.json(await handleAdminCancellation(request, path[2], body))
-        if (path[3] === 'address-change') return NextResponse.json(await handleAdminAddressChange(request, path[2], body))
-        return NextResponse.json(await handleAdminUpdateOrderStatus(request, path[2], body))
-      }
+      if (path[3] === 'address-change') return NextResponse.json(await handleAdminAddressChange(request, path[2], body))
+      return NextResponse.json(await handleAdminUpdateOrderStatus(request, path[2], body))
     }
-
+    if (path[1] === 'reviews' && path[2]) return NextResponse.json(await handleAdminDeleteReview(request, path[2]))
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   } catch (error) {

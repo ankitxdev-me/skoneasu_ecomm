@@ -102,36 +102,44 @@ export default function OrdersPage() {
                                 {/* ... content ... */}
                                 <CardContent className="p-0">
                                     <div className="divide-y divide-neutral-100">
-                                        {order.items?.map((item) => (
-                                            <div key={item.id} className="p-4 flex gap-4">
-                                                <div className="relative h-20 w-20 flex-shrink-0 bg-neutral-100 rounded-md overflow-hidden">
-                                                    {item.product_image ? (
-                                                        <Image
-                                                            src={item.product_image}
-                                                            alt={item.product_name}
-                                                            fill
-                                                            className="object-cover"
-                                                        />
-                                                    ) : (
-                                                        <div className="h-full w-full flex items-center justify-center text-neutral-400">
-                                                            <Package className="h-8 w-8" />
+                                        {order.items?.map((item) => {
+                                            const product = item.product
+                                            const imageUrl = product?.images?.[0]?.image_url
+
+                                            // Fallback for product name if the snapshot field is empty
+                                            const productName = item.product_name || product?.name || 'Product'
+
+                                            return (
+                                                <Link
+                                                    href={product?.slug ? `/product/${product.slug}` : '#'}
+                                                    key={item.id}
+                                                    className={`block transition-colors hover:bg-neutral-50 ${!product?.slug ? 'pointer-events-none' : ''}`}
+                                                >
+                                                    <div className="p-4 flex gap-4">
+                                                        <div className="relative h-20 w-20 flex-shrink-0 bg-neutral-100 rounded-md overflow-hidden border border-neutral-200">
+                                                            <Image
+                                                                src={imageUrl || '/default-product.jpeg'}
+                                                                alt={productName}
+                                                                fill
+                                                                className="object-cover"
+                                                            />
                                                         </div>
-                                                    )}
-                                                </div>
-                                                <div className="flex-1">
-                                                    <h4 className="font-medium">{item.product_name}</h4>
-                                                    {item.variant_details && (
-                                                        <p className="text-sm text-neutral-500">
-                                                            {item.variant_details.variant_type}: {item.variant_details.variant_value}
-                                                        </p>
-                                                    )}
-                                                    <div className="flex justify-between mt-2">
-                                                        <p className="text-sm text-neutral-600">Qty: {item.quantity}</p>
-                                                        <p className="font-medium">₹{item.price.toLocaleString()}</p>
+                                                        <div className="flex-1">
+                                                            <h4 className="font-medium text-neutral-900">{productName}</h4>
+                                                            {item.variant_details && (
+                                                                <p className="text-sm text-neutral-500">
+                                                                    {item.variant_details.variant_type}: {item.variant_details.variant_value}
+                                                                </p>
+                                                            )}
+                                                            <div className="flex justify-between mt-2">
+                                                                <p className="text-sm text-neutral-600">Qty: {item.quantity}</p>
+                                                                <p className="font-medium">₹{item.price_at_purchase?.toLocaleString() || item.price?.toLocaleString()}</p>
+                                                            </div>
+                                                        </div>
                                                     </div>
-                                                </div>
-                                            </div>
-                                        ))}
+                                                </Link>
+                                            )
+                                        })}
                                     </div>
                                 </CardContent>
                             </Card>

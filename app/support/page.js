@@ -9,6 +9,7 @@ import { supportAPI } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Plus, MessageSquare, Clock, CheckCircle, AlertCircle } from 'lucide-react'
 import { format } from 'date-fns'
+import { toast } from 'sonner'
 
 export default function SupportPage() {
     const { user, loading: authLoading } = useAuth()

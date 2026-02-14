@@ -12,6 +12,8 @@ import { productAPI, categoryAPI } from '@/lib/api'
 import { useCart } from '@/contexts/CartContext'
 import { toast } from 'sonner'
 import ProductCard from '@/components/ProductCard'
+import CustomerReviews from '@/components/CustomerReviews'
+import FAQSection from '@/components/FAQSection'
 
 import { supabase } from '@/lib/supabase' // Add import
 
@@ -116,10 +118,10 @@ export default function HomePage() {
             </p>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+          <div className="flex overflow-x-auto pb-6 md:grid md:grid-cols-3 lg:grid-cols-6 gap-4 snap-x snap-mandatory hide-scrollbar">
             {loading ? (
               Array.from({ length: 6 }).map((_, idx) => (
-                <div key={idx} className="animate-pulse">
+                <div key={idx} className="animate-pulse flex-shrink-0 w-[160px] md:w-auto snap-center">
                   <div className="aspect-square bg-muted rounded-lg mb-3" />
                   <div className="h-4 bg-muted rounded w-3/4 mx-auto" />
                 </div>
@@ -129,13 +131,13 @@ export default function HomePage() {
                 <Link
                   key={category.id}
                   href={`/shop?category=${category.slug}`}
-                  className="group"
+                  className="group flex-shrink-0 w-[160px] md:w-auto snap-center"
                 >
                   <Card className="overflow-hidden border-2 border-transparent hover:border-secondary transition-all duration-300">
                     <CardContent className="p-0">
                       <div className="aspect-square relative overflow-hidden">
                         <img
-                          src={category.image_url || 'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?w=400'}
+                          src={category.image_url || '/default-product.jpeg'}
                           alt={category.name}
                           className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                         />
@@ -166,10 +168,10 @@ export default function HomePage() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="flex overflow-x-auto pb-8 sm:grid sm:grid-cols-2 lg:grid-cols-4 gap-6 snap-x snap-mandatory hide-scrollbar">
             {loading ? (
               Array.from({ length: 8 }).map((_, idx) => (
-                <div key={idx} className="animate-pulse">
+                <div key={idx} className="animate-pulse flex-shrink-0 w-[66vw] sm:w-auto snap-center">
                   <div className="aspect-square bg-muted rounded-lg mb-4" />
                   <div className="h-4 bg-muted rounded w-3/4 mb-2" />
                   <div className="h-4 bg-muted rounded w-1/2" />
@@ -177,7 +179,9 @@ export default function HomePage() {
               ))
             ) : (
               featuredProducts.map((product) => (
-                <ProductCard key={product.id} product={product} />
+                <div key={product.id} className="flex-shrink-0 w-[66vw] sm:w-auto snap-center">
+                  <ProductCard product={product} />
+                </div>
               ))
             )}
           </div>
@@ -193,47 +197,9 @@ export default function HomePage() {
       </section>
 
       {/* Testimonials */}
-      <section className="py-16">
-        <div className="container mx-auto px-4">
-          <div className="text-center mb-12">
-            <h2 className="text-4xl font-serif font-bold text-primary mb-4">
-              What Our Customers Say
-            </h2>
-          </div>
+      <CustomerReviews />
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {[
-              {
-                name: 'Priya Sharma',
-                text: 'The diamond ring exceeded all my expectations. The craftsmanship is impeccable and the service was outstanding.',
-                rating: 5,
-              },
-              {
-                name: 'Rahul Verma',
-                text: 'Purchased a necklace for my wife. She absolutely loves it! The quality and packaging were both premium.',
-                rating: 5,
-              },
-              {
-                name: 'Ananya Kapoor',
-                text: 'Beautiful collection and genuine products. The certification and hallmarking gave me complete confidence.',
-                rating: 5,
-              },
-            ].map((testimonial, idx) => (
-              <Card key={idx} className="border-border">
-                <CardContent className="p-6">
-                  <div className="flex mb-4">
-                    {Array.from({ length: testimonial.rating }).map((_, i) => (
-                      <Star key={i} className="h-5 w-5 fill-secondary text-secondary" />
-                    ))}
-                  </div>
-                  <p className="text-muted-foreground mb-4 italic">"{testimonial.text}"</p>
-                  <p className="font-semibold text-primary">{testimonial.name}</p>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
-      </section>
+      <FAQSection />
 
       {/* Newsletter */}
       <section className="py-16 bg-muted/30 border-t border-border">

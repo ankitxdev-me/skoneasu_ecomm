@@ -127,6 +127,15 @@ export default function AdminOrderDetailsPage({ params }) {
                             </CardContent>
                         </Card>
                     )}
+
+                    {order.notes && (
+                        <Card className="border-blue-200 bg-blue-50">
+                            <CardHeader><CardTitle className="text-blue-800 flex items-center gap-2"><FileText className="h-5 w-5" /> Customer Notes</CardTitle></CardHeader>
+                            <CardContent>
+                                <p className="text-blue-900 whitespace-pre-wrap">{order.notes}</p>
+                            </CardContent>
+                        </Card>
+                    )}
                 </div>
 
                 {/* Details Section */}
@@ -209,8 +218,11 @@ export default function AdminOrderDetailsPage({ params }) {
                                         </div>
                                         <div className="flex-1">
                                             <p className="font-medium">{item.product?.name || item.product_name || 'Product'}</p>
-                                            {item.variant?.variant_value && (
-                                                <p className="text-sm text-neutral-500">{item.variant.variant_type}: {item.variant.variant_value}</p>
+                                            {(item.variant_details || item.variant) && (
+                                                <div className="text-sm text-neutral-500">
+                                                    {(item.variant_details?.variant_type || item.variant?.variant_type)}:&nbsp;
+                                                    {(item.variant_details?.variant_value || item.variant?.variant_value)}
+                                                </div>
                                             )}
                                         </div>
                                         <div className="text-right">

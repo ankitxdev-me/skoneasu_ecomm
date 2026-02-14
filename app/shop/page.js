@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from 'react'
 import Link from 'next/link'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { Filter, SlidersHorizontal, ChevronDown, Check, X } from 'lucide-react'
+import { Filter, SlidersHorizontal, ChevronDown, Check, X, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import {
@@ -45,6 +45,7 @@ function ShopContent() {
     const [priceRange, setPriceRange] = useState({ min: 0, max: 1000000 })
     const [filters, setFilters] = useState({
         category: searchParams.get('category') || '',
+        search: searchParams.get('search') || '',
         sort: searchParams.get('sort') || 'newest',
         min_price: '',
         max_price: ''
@@ -65,6 +66,7 @@ function ShopContent() {
         setFilters(prev => ({
             ...prev,
             category: searchParams.get('category') || '',
+            search: searchParams.get('search') || '',
             sort: searchParams.get('sort') || 'newest',
         }))
     }, [searchParams])
@@ -88,6 +90,7 @@ function ShopContent() {
             }
 
             if (filters.category) params.category = filters.category
+            if (filters.search) params.search = filters.search
             if (filters.min_price) params.min_price = filters.min_price
             if (filters.max_price) params.max_price = filters.max_price
 
@@ -122,6 +125,7 @@ function ShopContent() {
     const clearFilters = () => {
         setFilters({
             category: '',
+            search: '',
             sort: 'newest',
             min_price: '',
             max_price: ''
@@ -150,49 +154,57 @@ function ShopContent() {
             <div className="container mx-auto px-4 pb-20">
                 <div className="flex flex-col lg:flex-row gap-8">
 
-                    {/* Mobile Filter Sheet */}
-                    <div className="lg:hidden mb-4 flex gap-2">
-                        <Sheet>
-                            <SheetTrigger asChild>
-                                <Button variant="outline" className="flex-1">
-                                    <Filter className="mr-2 h-4 w-4" /> Filters
-                                </Button>
-                            </SheetTrigger>
-                            <SheetContent side="left">
-                                <SheetHeader>
-                                    <SheetTitle>Filters</SheetTitle>
-                                    <SheetDescription>Refine your search</SheetDescription>
-                                </SheetHeader>
-                                <div className="py-6 space-y-6">
-                                    <FilterSidebar
-                                        categories={categories}
-                                        filters={filters}
-                                        updateFilter={updateFilter}
-                                        clearFilters={clearFilters}
-                                        priceRange={priceRange}
-                                    />
-                                </div>
-                            </SheetContent>
-                        </Sheet>
+                    {/* Mobile Filter Sheet & Search */}
+                    <div className="lg:hidden mb-6 space-y-3">
+                        <SearchInput
+                            initialQuery={filters.search}
+                            onSearch={(q) => updateFilter('search', q)}
+                            placeholder="Search products..."
+                            className="w-full"
+                        />
+                        <div className="flex gap-2">
+                            <Sheet>
+                                <SheetTrigger asChild>
+                                    <Button variant="outline" className="flex-1">
+                                        <Filter className="mr-2 h-4 w-4" /> Filters
+                                    </Button>
+                                </SheetTrigger>
+                                <SheetContent side="left">
+                                    <SheetHeader>
+                                        <SheetTitle>Filters</SheetTitle>
+                                        <SheetDescription>Refine your search</SheetDescription>
+                                    </SheetHeader>
+                                    <div className="py-6 space-y-6">
+                                        <FilterSidebar
+                                            categories={categories}
+                                            filters={filters}
+                                            updateFilter={updateFilter}
+                                            clearFilters={clearFilters}
+                                            priceRange={priceRange}
+                                        />
+                                    </div>
+                                </SheetContent>
+                            </Sheet>
 
-                        <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                                <Button variant="outline" className="flex-1">
-                                    <SlidersHorizontal className="mr-2 h-4 w-4" /> Sort
-                                </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => updateFilter('sort', 'newest')}>
-                                    Newest
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => updateFilter('sort', 'price_asc')}>
-                                    Price: Low to High
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => updateFilter('sort', 'price_desc')}>
-                                    Price: High to Low
-                                </DropdownMenuItem>
-                            </DropdownMenuContent>
-                        </DropdownMenu>
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button variant="outline" className="flex-1">
+                                        <SlidersHorizontal className="mr-2 h-4 w-4" /> Sort
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                    <DropdownMenuItem onClick={() => updateFilter('sort', 'newest')}>
+                                        Newest
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => updateFilter('sort', 'price_asc')}>
+                                        Price: Low to High
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => updateFilter('sort', 'price_desc')}>
+                                        Price: High to Low
+                                    </DropdownMenuItem>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                        </div>
                     </div>
 
                     {/* Sidebar Filters (Desktop) */}
@@ -242,7 +254,7 @@ function ShopContent() {
                         </div>
 
                         {loading ? (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6">
                                 {Array.from({ length: 6 }).map((_, idx) => (
                                     <div key={idx} className="animate-pulse">
                                         <div className="aspect-square bg-neutral-200 rounded-lg mb-4" />
@@ -252,7 +264,7 @@ function ShopContent() {
                                 ))}
                             </div>
                         ) : products.length > 0 ? (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6">
                                 {products.map((product) => (
                                     <ProductCard key={product.id} product={product} />
                                 ))}
@@ -298,6 +310,11 @@ function FilterSidebar({ categories, filters, updateFilter, clearFilters, priceR
 
     return (
         <div className="space-y-8">
+            <div>
+                <h3 className="font-semibold text-primary mb-4">Search</h3>
+                <SearchInput initialQuery={filters.search} onSearch={(q) => updateFilter('search', q)} />
+            </div>
+
             <div>
                 <h3 className="font-semibold text-primary mb-4">Categories</h3>
                 <div className="space-y-3">
@@ -360,3 +377,44 @@ function FilterSidebar({ categories, filters, updateFilter, clearFilters, priceR
         </div>
     )
 }
+
+function SearchInput({ initialQuery, onSearch, placeholder = "Search...", className = "" }) {
+    const [query, setQuery] = useState(initialQuery || '')
+
+    // Update query if initialQuery changes
+    useEffect(() => {
+        setQuery(initialQuery || '')
+    }, [initialQuery])
+
+    const handleSubmit = (e) => {
+        e.preventDefault()
+        onSearch(query)
+    }
+
+    return (
+        <form onSubmit={handleSubmit} className={`flex gap-2 ${className}`}>
+            <div className="relative flex-1">
+                <input
+                    type="text"
+                    placeholder={placeholder}
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    className="w-full pl-3 pr-8 py-2 rounded-md border border-neutral-200 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+                {query && (
+                    <button
+                        type="button"
+                        onClick={() => { setQuery(''); onSearch(''); }}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600"
+                    >
+                        <X className="h-4 w-4" />
+                    </button>
+                )}
+            </div>
+            <Button type="submit" size="sm">
+                <Search className="h-4 w-4" />
+            </Button>
+        </form>
+    )
+}
+

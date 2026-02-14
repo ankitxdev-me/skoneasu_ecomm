@@ -11,6 +11,8 @@ import Footer from '@/components/Footer'
 import { productAPI, wishlistAPI } from '@/lib/api'
 import { useCart } from '@/contexts/CartContext'
 import { toast } from 'sonner'
+import ReviewForm from '@/components/ReviewForm'
+import ReviewList from '@/components/ReviewList'
 
 export default function ProductPage() {
     const { slug } = useParams()
@@ -19,6 +21,8 @@ export default function ProductPage() {
     const [loading, setLoading] = useState(true)
     const [selectedImage, setSelectedImage] = useState(0)
     const [selectedVariant, setSelectedVariant] = useState(null)
+    const [selectedAttributes, setSelectedAttributes] = useState({}) // { Size: 'S', Color: 'Red' }
+    const [availableAttributes, setAvailableAttributes] = useState({}) // { Size: ['S', 'M'], Color: ['Red'] }
     const [quantity, setQuantity] = useState(1)
     const { addToCart } = useCart()
 
@@ -30,8 +34,29 @@ export default function ProductPage() {
         try {
             const data = await productAPI.getBySlug(slug)
             setProduct(data)
+
             if (data.variants && data.variants.length > 0) {
-                setSelectedVariant(data.variants[0])
+                // generic way to extract attributes
+                const attrs = {}
+                data.variants.forEach(v => {
+                    const vAttrs = v.attributes || (v.variant_type && v.variant_value ? { [v.variant_type]: v.variant_value } : {})
+                    Object.entries(vAttrs).forEach(([key, val]) => {
+                        if (!attrs[key]) attrs[key] = new Set()
+                        attrs[key].add(val)
+                    })
+                })
+
+                const attrObj = {}
+                Object.keys(attrs).forEach(key => {
+                    attrObj[key] = Array.from(attrs[key])
+                })
+                setAvailableAttributes(attrObj)
+
+                // Select first variant default
+                const firstVariant = data.variants[0]
+                const firstAttrs = firstVariant.attributes || (firstVariant.variant_type && firstVariant.variant_value ? { [firstVariant.variant_type]: firstVariant.variant_value } : {})
+                setSelectedAttributes(firstAttrs)
+                setSelectedVariant(firstVariant)
             }
         } catch (error) {
             console.error('Error loading product:', error)
@@ -41,8 +66,40 @@ export default function ProductPage() {
         }
     }
 
+    // Effect to find matching variant when attributes change
+    useEffect(() => {
+        if (!product || !product.variants) return
+
+        const match = product.variants.find(v => {
+            const vAttrs = v.attributes || (v.variant_type && v.variant_value ? { [v.variant_type]: v.variant_value } : {})
+            const keys1 = Object.keys(vAttrs)
+            const keys2 = Object.keys(selectedAttributes)
+
+            if (keys1.length !== keys2.length) return false
+            return keys1.every(key => vAttrs[key] === selectedAttributes[key])
+        })
+
+        setSelectedVariant(match || null)
+    }, [selectedAttributes, product])
+
+    const handleAttributeSelect = (key, value) => {
+        const newAttrs = { ...selectedAttributes, [key]: value }
+        setSelectedAttributes(newAttrs)
+    }
+
+    const isOptionAvailable = (key, value) => {
+        // Check if this option + current other selections leads to a valid variant
+        // complex logic can be added here (e.g. disable if size S not available in Red)
+        // For now simple check
+        return true
+    }
+
     const handleAddToCart = async () => {
         if (!product) return
+        if (product.variants && product.variants.length > 0 && !selectedVariant) {
+            toast.error('Please select valid options')
+            return
+        }
         setLoading(true)
         try {
             await addToCart(product, quantity, selectedVariant?.id)
@@ -56,6 +113,10 @@ export default function ProductPage() {
 
     const handleBuyNow = async () => {
         if (!product) return
+        if (product.variants && product.variants.length > 0 && !selectedVariant) {
+            toast.error('Please select valid options')
+            return
+        }
         setLoading(true)
         try {
             await addToCart(product, quantity, selectedVariant?.id)
@@ -109,7 +170,7 @@ export default function ProductPage() {
                     <div className="space-y-4">
                         <div className="aspect-square relative overflow-hidden rounded-xl bg-neutral-100">
                             <img
-                                src={product.images?.[selectedImage]?.image_url || 'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?w=800'}
+                                src={product.images?.[selectedImage]?.image_url || '/default-product.jpeg'}
                                 alt={product.name}
                                 className="w-full h-full object-cover"
                             />
@@ -167,24 +228,34 @@ export default function ProductPage() {
 
                         {/* Variants */}
                         {product.variants && product.variants.length > 0 && (
-                            <div className="mb-8">
-                                <h3 className="font-semibold mb-3">
-                                    Select {product.variants[0].variant_type}:
-                                </h3>
-                                <div className="flex flex-wrap gap-3">
-                                    {product.variants.map((variant) => (
-                                        <button
-                                            key={variant.id}
-                                            onClick={() => setSelectedVariant(variant)}
-                                            className={`px-4 py-2 rounded border ${selectedVariant?.id === variant.id
-                                                ? 'bg-neutral-900 text-white border-neutral-900'
-                                                : 'bg-white text-neutral-900 border-neutral-200 hover:border-neutral-900'
-                                                }`}
-                                        >
-                                            {variant.variant_value}
-                                        </button>
-                                    ))}
-                                </div>
+                            <div className="mb-8 space-y-4">
+                                {Object.entries(availableAttributes).map(([attrName, values]) => (
+                                    <div key={attrName}>
+                                        <h3 className="font-semibold mb-3">
+                                            Select {attrName}: <span className="font-normal text-neutral-600">{selectedAttributes[attrName]}</span>
+                                        </h3>
+                                        <div className="flex flex-wrap gap-3">
+                                            {values.map((val) => (
+                                                <button
+                                                    key={val}
+                                                    onClick={() => handleAttributeSelect(attrName, val)}
+                                                    className={`px-4 py-2 rounded border transition-all ${selectedAttributes[attrName] === val
+                                                        ? 'bg-neutral-900 text-white border-neutral-900'
+                                                        : 'bg-white text-neutral-900 border-neutral-200 hover:border-neutral-900'
+                                                        }`}
+                                                >
+                                                    {val}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))}
+
+                                {!selectedVariant && (
+                                    <div className="text-red-500 text-sm mt-2">
+                                        This combination is currently unavailable.
+                                    </div>
+                                )}
                             </div>
                         )}
 
@@ -246,33 +317,26 @@ export default function ProductPage() {
                 </div>
 
                 {/* Reviews Section */}
-                <div className="mt-20">
-                    <h2 className="text-2xl font-serif font-bold mb-8">Customer Reviews</h2>
-                    {product.reviews && product.reviews.length > 0 ? (
-                        <div className="grid gap-6">
-                            {product.reviews.map(review => (
-                                <Card key={review.id} className="bg-neutral-50 shadow-none border-none">
-                                    <CardContent className="p-6">
-                                        <div className="flex items-center gap-2 mb-2">
-                                            <div className="font-semibold">{review.user?.full_name || 'Anonymous'}</div>
-                                            <span className="text-neutral-400 text-sm">•</span>
-                                            <div className="text-neutral-400 text-sm">
-                                                {new Date(review.created_at).toLocaleDateString()}
-                                            </div>
-                                        </div>
-                                        <div className="flex text-amber-500 mb-3">
-                                            {Array.from({ length: 5 }).map((_, i) => (
-                                                <Star key={i} className={`h-4 w-4 ${i < review.rating ? 'fill-current' : 'text-neutral-200'}`} />
-                                            ))}
-                                        </div>
-                                        <p className="text-neutral-700">{review.comment}</p>
-                                    </CardContent>
-                                </Card>
-                            ))}
+                <div className="mt-20 border-t border-neutral-100 pt-12" id="reviews">
+                    <div className="flex justify-between items-center mb-8">
+                        <h2 className="text-2xl font-serif font-bold">Customer Reviews</h2>
+                        <Button onClick={() => document.getElementById('review-form').scrollIntoView({ behavior: 'smooth' })}>
+                            Write a Review
+                        </Button>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
+                        <div className="lg:col-span-2">
+                            <ReviewList reviews={product.reviews} />
                         </div>
-                    ) : (
-                        <p className="text-neutral-500 italic">No reviews yet. Be the first to review this artwork!</p>
-                    )}
+
+                        <div id="review-form">
+                            <ReviewForm
+                                productId={product.id}
+                                onReviewAdded={() => loadProduct()}
+                            />
+                        </div>
+                    </div>
                 </div>
             </div>
 

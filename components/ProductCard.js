@@ -1,14 +1,20 @@
 'use client'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { Link as LinkIcon, Heart, ShoppingCart, Minus, Plus, ArrowRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { useCart } from '@/contexts/CartContext'
 import { useWishlist } from '@/contexts/WishlistContext'
+import { Star } from 'lucide-react'
 
 export default function ProductCard({ product }) {
     const { cart, addToCart, updateQuantity, removeFromCart } = useCart()
+
+    const getAverageRating = (p) => {
+        return p.averageRating ? Number(p.averageRating) : 0
+    }
     const { toggleWishlist, isInWishlist } = useWishlist()
     const isWishlisted = isInWishlist(product.id)
 
@@ -21,7 +27,13 @@ export default function ProductCard({ product }) {
     // Find if product is in cart
     const cartItem = cart.find(item => item.product_id === product.id && !item.variant_id)
 
+    const router = useRouter()
+
     const handleAddToCart = () => {
+        if (product.variants && product.variants.length > 0) {
+            router.push(`/product/${product.slug}`)
+            return
+        }
         addToCart(product)
     }
 
@@ -49,32 +61,71 @@ export default function ProductCard({ product }) {
                 <Link href={`/product/${product.slug}`}>
                     <div className="relative aspect-square overflow-hidden bg-neutral-100">
                         <img
-                            src={product.images?.[0]?.image_url || 'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?w=800'}
+                            src={product.images?.[0]?.image_url || '/default-product.jpeg'}
                             alt={product.name}
                             className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                         />
                         {hasDiscount && (
-                            <div className="absolute top-3 left-3 bg-red-600 text-white px-3 py-1 rounded-full text-sm font-semibold">
+                            <div className="absolute top-3 left-3 bg-red-600 text-white px-2 py-0.5 rounded text-xs font-semibold z-10">
                                 -{discountPercent}%
                             </div>
                         )}
                         {product.new_arrival && (
-                            <div className="absolute top-3 right-3 bg-amber-600 text-white px-3 py-1 rounded-full text-sm font-semibold">
+                            <div className="absolute bottom-3 left-3 bg-amber-600 text-white px-2 py-0.5 rounded text-xs font-semibold z-10">
                                 New
                             </div>
                         )}
+
+                        {/* Circular Rating Badge */}
+                        <div className="absolute top-3 right-3 w-14 h-14 bg-white/90 backdrop-blur-sm rounded-full shadow-sm flex flex-col items-center justify-center border border-amber-100 z-10">
+                            {/* Semicircle Stars Arc */}
+                            <div className="absolute top-1 w-full h-full">
+                                {[...Array(5)].map((_, i) => {
+                                    // Spread 5 stars across top 100 degrees (-50 to +50 from top center)
+                                    const rotation = -50 + (i * 25)
+                                    return (
+                                        <div
+                                            key={i}
+                                            className="absolute top-0 left-1/2 -ml-1 h-1/2 origin-bottom"
+                                            style={{ transform: `rotate(${rotation}deg)` }}
+                                        >
+                                            <Star
+                                                className={`w-2 h-2 ${i < Math.round(getAverageRating(product)) ? 'fill-amber-500 text-amber-500' : 'text-neutral-300'}`}
+                                            />
+                                        </div>
+                                    )
+                                })}
+                            </div>
+                            <span className="text-xs font-bold text-neutral-900 mt-3">
+                                {getAverageRating(product) > 0 ? getAverageRating(product).toFixed(1) : '-'}
+                            </span>
+                        </div>
+
+
                     </div>
                 </Link>
 
-                <div className="p-4">
+                <div className="p-3">
                     <Link href={`/product/${product.slug}`}>
-                        <h3 className="font-semibold text-neutral-900 mb-2 group-hover:text-amber-600 transition-colors line-clamp-1">
-                            {product.name}
-                        </h3>
+                        <div className="flex justify-between items-start gap-2 mb-2">
+                            <h3 className="font-semibold text-sm md:text-base text-neutral-900 group-hover:text-amber-600 transition-colors line-clamp-1">
+                                {product.name}
+                            </h3>
+                            {getAverageRating(product) > 0 && (
+                                <div className="flex items-center gap-1 shrink-0 bg-neutral-100 px-1.5 py-0.5 rounded">
+                                    <Star className="w-3 h-3 fill-amber-500 text-amber-500" />
+                                    <span className="text-xs font-medium text-neutral-900">
+                                        {getAverageRating(product).toFixed(1)}
+                                    </span>
+                                </div>
+                            )}
+                        </div>
                     </Link>
 
+
+
                     <div className="flex items-center gap-2 mb-3">
-                        <span className="text-lg font-bold text-neutral-900">
+                        <span className="text-base md:text-lg font-bold text-neutral-900">
                             ₹{price?.toLocaleString('en-IN')}
                         </span>
                         {hasDiscount && (

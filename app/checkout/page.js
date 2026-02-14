@@ -180,7 +180,8 @@ export default function CheckoutPage() {
             const { order, razorpay } = await orderAPI.create({
                 shipping_address: sanitizedData,
                 coupon_code: appliedCoupon ? appliedCoupon.code : null,
-                payment_method: paymentMethod
+                payment_method: paymentMethod,
+                notes: data.notes
             })
 
             // If COD, we are done
@@ -340,6 +341,18 @@ export default function CheckoutPage() {
                                                 <label className="text-sm font-medium">Country</label>
                                                 <Input {...register('country', { required: true })} defaultValue="India" />
                                             </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-4">
+                                        <h3 className="font-semibold text-lg">Order Notes (Optional)</h3>
+                                        <div className="space-y-2">
+                                            <label className="text-sm font-medium">Notes for Administrator / Delivery Instructions</label>
+                                            <textarea
+                                                className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                                placeholder="e.g. Please ring the doorbell, Leave at front desk..."
+                                                {...register('notes')}
+                                            />
                                         </div>
                                     </div>
 

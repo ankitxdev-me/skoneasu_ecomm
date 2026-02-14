@@ -19,6 +19,7 @@ export const metadata = {
   title: "Skoneasu - For You Only",
   description: "Discover our exquisite collection of handcrafted luxury jewelry. Skoneasu - For you only.",
   keywords: "skoneasu, luxury jewelry, diamond rings, gemstone necklaces, premium jewelry, engagement rings",
+
 }
 
 export default function RootLayout({ children }) {

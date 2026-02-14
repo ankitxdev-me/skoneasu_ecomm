@@ -126,7 +126,9 @@ export default function CartPage() {
                                                         </Link>
                                                         {item.variant && (
                                                             <p className="text-sm text-neutral-500 mt-1">
-                                                                {item.variant.variant_type}: {item.variant.variant_value}
+                                                                {item.variant.variant_name ||
+                                                                    (item.variant.attributes ? Object.values(item.variant.attributes).join(' / ') :
+                                                                        `${item.variant.variant_type}: ${item.variant.variant_value}`)}
                                                             </p>
                                                         )}
                                                     </div>

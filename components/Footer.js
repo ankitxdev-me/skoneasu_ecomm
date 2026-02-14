@@ -13,8 +13,7 @@ export default function Footer() {
           {/* About */}
           <div>
             <div className="flex items-center gap-2 mb-4">
-              <img src="/logo.jpg" alt="Skoneasu" className="h-10 w-auto" />
-              <h3 className="text-2xl font-serif font-bold text-primary">SKONEASU</h3>
+              <img src="/logo.png" alt="Skoneasu" className="h-12 w-auto" />
             </div>
             <p className="text-muted-foreground mb-4 text-sm leading-relaxed">
               Perfect Gifts for Him, Her & Everyone. From the Heart.
@@ -53,7 +52,7 @@ export default function Footer() {
                 </Link>
               </li>
               <li>
-                <Link href="/contact" className="text-muted-foreground hover:text-secondary transition-colors">
+                <Link href="/support" className="text-muted-foreground hover:text-secondary transition-colors">
                   Contact
                 </Link>
               </li>
@@ -77,11 +76,6 @@ export default function Footer() {
               <li>
                 <Link href="/size-guide" className="text-muted-foreground hover:text-secondary transition-colors">
                   Size Guide
-                </Link>
-              </li>
-              <li>
-                <Link href="/care-guide" className="text-muted-foreground hover:text-secondary transition-colors">
-                  Jewelry Care
                 </Link>
               </li>
               <li>
