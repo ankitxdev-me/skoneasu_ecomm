@@ -608,13 +608,34 @@ export function AuthProvider({ children }) {
             if (error) throw error
             if (!mounted) return
 
-            if (session?.user) {
-                setSession(session)
-                setUser(session.user)
+            // if (session?.user) {
+            //     setSession(session)
+            //     setUser(session.user)
 
-                // Auth callback ke bahar profile load
-                await loadProfile()
-            } else {
+            //     // Auth callback ke bahar profile load
+            //     await loadProfile()
+            // }
+            
+            
+            if (session?.user) {
+    setSession(session)
+
+    // Recovery session ko normal login mat samjho
+    const isRecovery =
+        window.location.pathname === '/auth/update-password'
+
+    if (isRecovery) {
+        setIsPasswordRecovery(true)
+        setUser(null)
+        setProfile(null)
+        setLoading(false)
+        return
+    }
+
+    setUser(session.user)
+
+    await loadProfile()
+}else {
                 setSession(null)
                 setUser(null)
                 setProfile(null)
@@ -655,14 +676,41 @@ export function AuthProvider({ children }) {
             return
         }
 
-        if (event === 'SIGNED_OUT') {
-            setIsPasswordRecovery(false)
-            setSession(null)
-            setUser(null)
-            setProfile(null)
-            setLoading(false)
-            return
+        // if (event === 'SIGNED_OUT') {
+        //     setIsPasswordRecovery(false)
+        //     setSession(null)
+        //     setUser(null)
+        //     setProfile(null)
+        //     setLoading(false)
+        //     return
+        // }
+
+
+        if (event === 'SIGNED_IN' && session?.user) {
+    const isRecovery =
+        window.location.pathname === '/auth/update-password'
+
+    if (isRecovery) {
+        setIsPasswordRecovery(true)
+        setSession(session)
+        setUser(null)
+        setProfile(null)
+        setLoading(false)
+        return
+    }
+
+    setIsPasswordRecovery(false)
+    setSession(session)
+    setUser(session.user)
+
+    setTimeout(() => {
+        if (mounted) {
+            loadProfile()
         }
+    }, 0)
+
+    return
+}
 
         if (event === 'SIGNED_IN' && session?.user) {
             setIsPasswordRecovery(false)
