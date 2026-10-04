@@ -123,3 +123,266 @@ export default function AdminLayout({ children }) {
         </div>
     )
 }
+
+
+
+// 'use client'
+
+// import { useState, useEffect } from 'react'
+// import { useRouter } from 'next/navigation'
+// import { useForm } from 'react-hook-form'
+// import { Button } from '@/components/ui/button'
+// import { Input } from '@/components/ui/input'
+// import {
+//     Card,
+//     CardContent,
+//     CardHeader,
+//     CardTitle,
+//     CardDescription,
+// } from '@/components/ui/card'
+// import { toast } from 'sonner'
+// import Header from '@/components/Header'
+// import { Loader2 } from 'lucide-react'
+// import { supabase } from '@/lib/supabase'
+
+// export default function UpdatePasswordPage() {
+//     const router = useRouter()
+
+//     const {
+//         register,
+//         handleSubmit,
+//         watch,
+//         formState: { errors },
+//     } = useForm()
+
+//     const [loading, setLoading] = useState(false)
+//     const [checkingSession, setCheckingSession] = useState(true)
+//     const [hasSession, setHasSession] = useState(false)
+
+//     const password = watch('password')
+
+//     useEffect(() => {
+//         const checkRecoverySession = async () => {
+//             try {
+//                 const {
+//                     data: { session },
+//                 } = await supabase.auth.getSession()
+
+//                 console.log('RESET PASSWORD SESSION:', session)
+
+//                 if (session) {
+//                     setHasSession(true)
+//                 } else {
+//                     setHasSession(false)
+//                 }
+//             } catch (error) {
+//                 console.error('Error checking recovery session:', error)
+//                 setHasSession(false)
+//             } finally {
+//                 setCheckingSession(false)
+//             }
+//         }
+
+//         checkRecoverySession()
+
+//         // Important:
+//         // Supabase can establish the recovery session after the page loads.
+//         const {
+//             data: { subscription },
+//         } = supabase.auth.onAuthStateChange((event, session) => {
+//             console.log('PASSWORD RESET AUTH EVENT:', event)
+
+//             if (session) {
+//                 setHasSession(true)
+//             }
+//         })
+
+//         return () => {
+//             subscription.unsubscribe()
+//         }
+//     }, [])
+
+//     const onSubmit = async (data) => {
+//         if (data.password !== data.confirmPassword) {
+//             toast.error('Passwords do not match')
+//             return
+//         }
+
+//         setLoading(true)
+
+//         try {
+//             const {
+//                 data: { session },
+//             } = await supabase.auth.getSession()
+
+//             console.log('SESSION BEFORE PASSWORD UPDATE:', session)
+
+//             if (!session) {
+//                 toast.error(
+//                     'Password reset session has expired. Please request a new reset link.'
+//                 )
+//                 return
+//             }
+
+//             const { error } = await supabase.auth.updateUser({
+//                 password: data.password,
+//             })
+
+//             if (error) {
+//                 throw error
+//             }
+
+//             toast.success('Password updated successfully!')
+
+//             // Password successfully changed.
+//             // Now redirect to sign in.
+//             await supabase.auth.signOut()
+
+//             router.replace('/auth/signin')
+//         } catch (error) {
+//             console.error('PASSWORD UPDATE ERROR:', error)
+
+//             toast.error(
+//                 error?.message || 'Failed to update password'
+//             )
+//         } finally {
+//             setLoading(false)
+//         }
+//     }
+
+//     if (checkingSession) {
+//         return (
+//             <div className="min-h-screen bg-neutral-50 flex flex-col">
+//                 <Header />
+
+//                 <div className="flex-1 flex items-center justify-center">
+//                     <Loader2 className="h-8 w-8 animate-spin text-amber-600" />
+//                 </div>
+//             </div>
+//         )
+//     }
+
+//     return (
+//         <div className="min-h-screen bg-neutral-50 flex flex-col">
+//             <Header />
+
+//             <div className="flex-1 flex items-center justify-center px-4 py-12">
+//                 <Card className="w-full max-w-md">
+
+//                     <CardHeader className="text-center">
+//                         <CardTitle className="text-2xl font-serif">
+//                             Set New Password
+//                         </CardTitle>
+
+//                         <CardDescription>
+//                             Enter your new password below
+//                         </CardDescription>
+//                     </CardHeader>
+
+//                     <CardContent>
+
+//                         {!hasSession ? (
+//                             <div className="space-y-4 text-center">
+
+//                                 <div className="bg-red-50 text-red-700 p-4 rounded-lg text-sm">
+//                                     This password reset link is invalid or has
+//                                     expired.
+//                                 </div>
+
+//                                 <Button
+//                                     type="button"
+//                                     className="w-full"
+//                                     onClick={() =>
+//                                         router.push('/auth/forgot-password')
+//                                     }
+//                                 >
+//                                     Request New Reset Link
+//                                 </Button>
+
+//                             </div>
+//                         ) : (
+
+//                             <form
+//                                 onSubmit={handleSubmit(onSubmit)}
+//                                 className="space-y-4"
+//                             >
+
+//                                 {/* New Password */}
+//                                 <div className="space-y-2">
+
+//                                     <label className="text-sm font-medium">
+//                                         New Password
+//                                     </label>
+
+//                                     <Input
+//                                         type="password"
+//                                         placeholder="Minimum 6 characters"
+//                                         {...register('password', {
+//                                             required:
+//                                                 'Password is required',
+//                                             minLength: {
+//                                                 value: 6,
+//                                                 message:
+//                                                     'Password must be at least 6 characters',
+//                                             },
+//                                         })}
+//                                     />
+
+//                                     {errors.password && (
+//                                         <p className="text-sm text-red-600">
+//                                             {errors.password.message}
+//                                         </p>
+//                                     )}
+
+//                                 </div>
+
+//                                 {/* Confirm Password */}
+//                                 <div className="space-y-2">
+
+//                                     <label className="text-sm font-medium">
+//                                         Confirm Password
+//                                     </label>
+
+//                                     <Input
+//                                         type="password"
+//                                         placeholder="Re-enter your password"
+//                                         {...register('confirmPassword', {
+//                                             required:
+//                                                 'Please confirm your password',
+//                                             validate: (value) =>
+//                                                 value === password ||
+//                                                 'Passwords do not match',
+//                                         })}
+//                                     />
+
+//                                     {errors.confirmPassword && (
+//                                         <p className="text-sm text-red-600">
+//                                             {errors.confirmPassword.message}
+//                                         </p>
+//                                     )}
+
+//                                 </div>
+
+//                                 <Button
+//                                     type="submit"
+//                                     className="w-full"
+//                                     disabled={loading}
+//                                 >
+//                                     {loading && (
+//                                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+//                                     )}
+
+//                                     {loading
+//                                         ? 'Updating Password...'
+//                                         : 'Update Password'}
+//                                 </Button>
+
+//                             </form>
+//                         )}
+
+//                     </CardContent>
+//                 </Card>
+//             </div>
+//         </div>
+//     )
+// }
