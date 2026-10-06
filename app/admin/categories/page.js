@@ -89,15 +89,26 @@ export default function CategoriesPage() {
 
     const handleSubmit = async (e) => {
         e.preventDefault()
+
+        if (formData.is_main) {
+            const currentMainCount = categories.filter(c => c.is_main && c.id !== editingId).length
+            if (currentMainCount >= 4) {
+                toast.error('Only 4 categories can be marked as Main for the navbar. Please unmark another category first.')
+                return
+            }
+        }
+
         setSubmitting(true)
 
         try {
             if (editingId) {
                 await adminAPI.categories.update(editingId, formData)
                 toast.success('Category updated')
+            if (typeof window !== 'undefined') window.dispatchEvent(new Event('categories-updated'))
             } else {
                 await adminAPI.categories.create(formData)
                 toast.success('Category created')
+            if (typeof window !== 'undefined') window.dispatchEvent(new Event('categories-updated'))
             }
             setIsDialogOpen(false)
             resetForm()
@@ -106,6 +117,30 @@ export default function CategoriesPage() {
             toast.error(error.message || 'Failed to save category')
         } finally {
             setSubmitting(false)
+        }
+    }
+
+    const handleToggleMain = async (category) => {
+        const newStatus = !category.is_main
+
+        if (newStatus) {
+            const currentMainCount = categories.filter(c => c.is_main && c.id !== category.id).length
+            if (currentMainCount >= 4) {
+                toast.error('Only 4 categories can be marked as Main for the navbar. Please unmark another category first.')
+                return
+            }
+        }
+
+        try {
+            await adminAPI.categories.update(category.id, { is_main: newStatus })
+            toast.success(`${category.name} ${newStatus ? 'marked as Main (added to Navbar)' : 'removed from Navbar'}`)
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new Event('categories-updated'))
+            }
+            loadCategories()
+        } catch (error) {
+            toast.error(error.message || 'Failed to update category status')
+            console.error(error)
         }
     }
 
@@ -131,6 +166,7 @@ export default function CategoriesPage() {
         try {
             await adminAPI.categories.delete(id)
             toast.success('Category deleted')
+            if (typeof window !== 'undefined') window.dispatchEvent(new Event('categories-updated'))
             loadCategories()
         } catch (error) {
             toast.error('Failed to delete category')
@@ -173,17 +209,22 @@ export default function CategoriesPage() {
                                 />
                             </div>
 
-                            <div className="flex items-center gap-2 border p-3 rounded-md bg-neutral-50/50">
-                                <input
-                                    type="checkbox"
-                                    id="is_main"
-                                    className="h-4 w-4 rounded border-gray-300 text-amber-600 focus:ring-amber-600"
-                                    checked={formData.is_main}
-                                    onChange={(e) => setFormData({ ...formData, is_main: e.target.checked })}
-                                />
-                                <label htmlFor="is_main" className="text-sm font-medium cursor-pointer">
-                                    Show in Navbar (Main Category)
-                                </label>
+                            <div className="flex flex-col gap-1.5 border p-3 rounded-md bg-neutral-50/50">
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        type="checkbox"
+                                        id="is_main"
+                                        className="h-4 w-4 rounded border-gray-300 text-amber-600 focus:ring-amber-600 cursor-pointer"
+                                        checked={formData.is_main}
+                                        onChange={(e) => setFormData({ ...formData, is_main: e.target.checked })}
+                                    />
+                                    <label htmlFor="is_main" className="text-sm font-semibold cursor-pointer text-neutral-900">
+                                        Show in Navbar (Main Category)
+                                    </label>
+                                </div>
+                                <p className="text-xs text-neutral-500 pl-6">
+                                    When enabled, this category is marked as Main (maximum 4 allowed). It appears directly in the store header navbar.
+                                </p>
                             </div>
 
                             <div className="space-y-2">
@@ -251,7 +292,7 @@ export default function CategoriesPage() {
                                 <TableRow>
                                     <TableHead>Image</TableHead>
                                     <TableHead>Name</TableHead>
-                                    <TableHead>Status</TableHead>
+                                    <TableHead>Status (Navbar - Max 4)</TableHead>
                                     <TableHead>Slug</TableHead>
                                     <TableHead>Description</TableHead>
                                     <TableHead className="text-right">Actions</TableHead>
@@ -262,12 +303,15 @@ export default function CategoriesPage() {
                                     <TableRow key={category.id}>
                                         <TableCell>
                                             {category.image_url ? (
-                                                <div className="relative h-12 w-12 rounded overflow-hidden">
-                                                    <Image
+                                                <div className="relative h-12 w-12 rounded overflow-hidden bg-neutral-100">
+                                                    <img
                                                         src={category.image_url}
                                                         alt={category.name}
-                                                        fill
-                                                        className="object-cover"
+                                                        className="w-full h-full object-cover"
+                                                        onError={(e) => {
+                                                            e.target.onerror = null;
+                                                            e.target.src = '/default-product.jpeg';
+                                                        }}
                                                     />
                                                 </div>
                                             ) : (
@@ -278,11 +322,19 @@ export default function CategoriesPage() {
                                         </TableCell>
                                         <TableCell className="font-medium">{category.name}</TableCell>
                                         <TableCell>
-                                            {category.is_main && (
-                                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
-                                                    Main
-                                                </span>
-                                            )}
+                                            <button
+                                                type="button"
+                                                onClick={() => handleToggleMain(category)}
+                                                title={category.is_main ? 'Click to remove from navbar' : 'Click to show in navbar as Main'}
+                                                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold cursor-pointer transition-all border ${
+                                                    category.is_main
+                                                        ? 'bg-amber-100 text-amber-900 border-amber-300 hover:bg-amber-200'
+                                                        : 'bg-neutral-100 text-neutral-500 border-neutral-200 hover:bg-neutral-200 hover:text-neutral-700'
+                                                }`}
+                                            >
+                                                <span className={`w-1.5 h-1.5 rounded-full ${category.is_main ? 'bg-amber-600' : 'bg-neutral-400'}`} />
+                                                {category.is_main ? 'Main' : 'Hidden'}
+                                            </button>
                                         </TableCell>
                                         <TableCell className="text-neutral-500">{category.slug}</TableCell>
                                         <TableCell className="max-w-xs truncate text-neutral-500">

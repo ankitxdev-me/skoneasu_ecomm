@@ -5,7 +5,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/contexts/AuthContext'
 import { Button } from '@/components/ui/button'
-import { Loader2, LayoutDashboard, Package, ShoppingCart, Users, Tag, LogOut, ArrowLeft, Layers, MessageSquare, Star, Menu } from 'lucide-react'
+import { Loader2, LayoutDashboard, Package, ShoppingCart, Users, Tag, LogOut, ArrowLeft, Layers, MessageSquare, Star, Menu, Share2 } from 'lucide-react'
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 
 export default function AdminLayout({ children }) {
@@ -42,6 +42,7 @@ export default function AdminLayout({ children }) {
         { href: '/admin/coupons', label: 'Coupons', icon: Tag },
         { href: '/admin/reviews', label: 'Reviews', icon: Star },
         { href: '/admin/support', label: 'Support', icon: MessageSquare },
+        { href: '/admin/social', label: 'Social Media', icon: Share2 },
     ]
 
     const NavContent = () => (

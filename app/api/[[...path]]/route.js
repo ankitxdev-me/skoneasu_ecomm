@@ -132,7 +132,7 @@ async function handleGetCategories() {
   const { data, error } = await supabase
     .from('categories')
     .select('*')
-    .order('name')
+    .order('created_at', { ascending: true })
 
   if (error) throw error
   return data
@@ -142,7 +142,7 @@ async function handleGetCategoryBySlug(slug) {
   const { data, error } = await supabase
     .from('categories')
     .select('*')
-    .eq('slug', slug)
+    .eq('slug', targetSlug)
     .single()
 
   if (error) throw error
@@ -225,7 +225,7 @@ async function handleGetProducts(searchParams) {
   } else if (searchParams.sort === 'price_desc') {
     query = query.order('price', { ascending: false })
   } else if (searchParams.sort === 'newest') {
-    query = query.order('created_at', { ascending: false })
+    query = query.order('created_at', { ascending: true })
   } else {
     query = query.order('created_at', { ascending: false })
   }
@@ -340,6 +340,13 @@ async function handleGetProducts(searchParams) {
 }
 
 async function handleGetProductBySlug(slug) {
+  const slugAliases = {
+    'zirconia-silver-necklace': 'zirconia-heart-silver-necklace',
+    'classic-black-dial-watch': 'classic-mens-watch',
+    'gold-plated-stacking-rings-set': 'elegant-ring-set',
+    'natural-stone-beaded-bracelet': 'black-bead-bracelet'
+  };
+  const targetSlug = slugAliases[slug] || slug;
   const { data, error } = await supabase
     .from('products')
     .select(`
@@ -356,7 +363,7 @@ async function handleGetProductBySlug(slug) {
         user:profiles(full_name)
       )
     `)
-    .eq('slug', slug)
+    .eq('slug', targetSlug)
     .single()
 
   if (error) throw error
@@ -933,7 +940,7 @@ async function handleGetPinnedReviews() {
       product:products(name, slug, images:product_images(image_url))
     `)
     .eq('is_pinned', true)
-    .limit(3)
+    .limit(12)
     .order('created_at', { ascending: false })
 
   if (error) throw error
@@ -1582,6 +1589,10 @@ export async function GET(request, context) {
       if (path[1] === 'pinned') return NextResponse.json(await handleGetPinnedReviews())
     }
 
+    if (path[0] === 'settings' && path[1] === 'social') {
+      return NextResponse.json(await handleGetSocialSettings())
+    }
+
     if (path[0] === 'support') {
       if (path[1]) {
         return NextResponse.json(await handleGetSupportTicketDetails(request, path[1]))
@@ -1652,9 +1663,28 @@ async function handleAdminUpdateCategory(request, categoryId, body) {
   const { user, scopedSupabase } = await getAuthUser(request)
   if (!user || !(await isAdmin(user.id))) throw new Error('Unauthorized')
 
+  const allowedFields = ['name', 'slug', 'description', 'image_url', 'is_main']
+  const updateData = {}
+  for (const key of allowedFields) {
+    if (key in body) updateData[key] = body[key]
+  }
+
+  // Enforce maximum 4 main categories
+  if (updateData.is_main === true) {
+    const { count } = await scopedSupabase
+      .from('categories')
+      .select('id', { count: 'exact', head: true })
+      .eq('is_main', true)
+      .neq('id', categoryId)
+
+    if (count >= 4) {
+      throw new Error('Only 4 categories can be marked as Main for the navbar. Please unmark another category first.')
+    }
+  }
+
   const { data, error } = await scopedSupabase
     .from('categories')
-    .update(body)
+    .update(updateData)
     .eq('id', categoryId)
     .select()
     .single()
@@ -1951,6 +1981,7 @@ export async function PUT(request, context) {
 
     // Admin routes
     if (path[0] === 'admin') {
+      if (path[1] === 'settings' && path[2] === 'social') return NextResponse.json(await handleAdminUpdateSocialSettings(request, body))
       if (path[1] === 'products' && path[2]) return NextResponse.json(await handleAdminUpdateProduct(request, path[2], body))
       if (path[1] === 'categories' && path[2]) return NextResponse.json(await handleAdminUpdateCategory(request, path[2], body))
       if (path[3] === 'address-change') return NextResponse.json(await handleAdminAddressChange(request, path[2], body))
@@ -2013,4 +2044,52 @@ export async function DELETE(request, context) {
       { status: 500 }
     )
   }
+}
+
+
+async function handleGetSocialSettings() {
+  const { data, error } = await supabase
+    .from('store_settings')
+    .select('value')
+    .eq('key', 'social_links')
+    .maybeSingle()
+
+  const defaults = {
+    instagram: 'https://www.instagram.com/the.skoneasu?igsh=YjBqcHRmdzJscnp0',
+    facebook: 'https://facebook.com',
+    twitter: 'https://twitter.com',
+    pinterest: 'https://pinterest.com',
+    youtube: 'https://youtube.com'
+  }
+
+  if (error || !data || !data.value) {
+    return defaults
+  }
+
+  try {
+    const parsed = typeof data.value === 'string' ? JSON.parse(data.value) : data.value
+    return { ...defaults, ...parsed }
+  } catch (e) {
+    return defaults
+  }
+}
+
+async function handleAdminUpdateSocialSettings(request, body) {
+  const { user, scopedSupabase } = await getAuthUser(request)
+  if (!user || !(await isAdmin(user.id))) throw new Error('Unauthorized')
+
+  const valString = typeof body === 'string' ? body : JSON.stringify(body)
+  const { data, error } = await scopedSupabase
+    .from('store_settings')
+    .upsert({
+      key: 'social_links',
+      value: valString,
+      description: 'Store social media platform links',
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'key' })
+    .select()
+    .single()
+
+  if (error) throw error
+  return { success: true, settings: body }
 }
