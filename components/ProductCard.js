@@ -1,6 +1,5 @@
 'use client'
 
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Heart, Star, Plus, Minus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -8,7 +7,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { useCart } from '@/contexts/CartContext'
 import { useWishlist } from '@/contexts/WishlistContext'
 
-export default function ProductCard({ product }) {
+export default function ProductCard({ product, isNewArrival = false }) {
   const router = useRouter()
   const { cart, addToCart, updateQuantity, removeFromCart } = useCart()
   const { isInWishlist, toggleWishlist } = useWishlist()
@@ -24,21 +23,40 @@ export default function ProductCard({ product }) {
     ? Math.round(((product.price - product.discount_price) / product.price) * 100)
     : 0
 
-  // Pure dynamic badge mapping from database product fields
+  // Badge logic:
+  // - New arrivals section => always 'New'
+  // - Discount <= 30% => '-X%'
+  // - Discount 31% to 49% => 'Sale'
+  // - Discount >= 50% => 'Special Offer'
+  // - Fallbacks for new_arrival and best_seller
   const renderBadge = () => {
-    if (product.best_seller) {
+    if (isNewArrival || product.isNewArrival) {
       return (
-        <span className="bg-[#E53935] text-white font-sans font-bold text-[11px] sm:text-[12px] px-2 py-0.5 rounded shadow-sm">
-          Bestseller
+        <span className="bg-[#B87545] text-white font-sans font-bold text-[11px] sm:text-[12px] px-2 py-0.5 rounded shadow-sm">
+          New
         </span>
       )
     }
-    if (hasDiscount) {
-      return (
-        <span className="bg-[#E53935] text-white font-sans font-bold text-[11px] sm:text-[12px] px-2 py-0.5 rounded shadow-sm">
-          -{discountPercent}%
-        </span>
-      )
+    if (hasDiscount && discountPercent > 0) {
+      if (discountPercent <= 30) {
+        return (
+          <span className="bg-[#E53935] text-white font-sans font-bold text-[11px] sm:text-[12px] px-2 py-0.5 rounded shadow-sm">
+            -{discountPercent}%
+          </span>
+        )
+      } else if (discountPercent <= 49) {
+        return (
+          <span className="bg-[#E53935] text-white font-sans font-bold text-[11px] sm:text-[12px] px-2 py-0.5 rounded shadow-sm">
+            Sale
+          </span>
+        )
+      } else {
+        return (
+          <span className="bg-[#E53935] text-white font-sans font-bold text-[11px] sm:text-[12px] px-2 py-0.5 rounded shadow-sm">
+            Special Offer
+          </span>
+        )
+      }
     }
     if (product.new_arrival) {
       return (
@@ -47,7 +65,18 @@ export default function ProductCard({ product }) {
         </span>
       )
     }
+    if (product.best_seller) {
+      return (
+        <span className="bg-[#E53935] text-white font-sans font-bold text-[11px] sm:text-[12px] px-2 py-0.5 rounded shadow-sm">
+          Bestseller
+        </span>
+      )
+    }
     return null
+  }
+
+  const handleCardClick = (e) => {
+    router.push(`/product/${product.slug || product.id}`)
   }
 
   const handleAddToCart = (e) => {
@@ -86,11 +115,14 @@ export default function ProductCard({ product }) {
   const reviewCount = product.reviewCount || product.reviews?.length || 0
 
   return (
-    <Card className="group overflow-hidden bg-white border border-[#E8C7AF]/60 rounded-xl hover:shadow-md transition-all flex flex-col justify-between">
+    <Card
+      onClick={handleCardClick}
+      className="group overflow-hidden bg-white border border-[#E8C7AF]/60 rounded-xl hover:shadow-md transition-all flex flex-col justify-between cursor-pointer"
+    >
       <CardContent className="p-0 flex flex-col justify-between h-full">
         
         {/* Product Image */}
-        <Link href={`/product/${product.slug}`} className="block relative aspect-square overflow-hidden bg-[#F8EEE4]">
+        <div className="block relative aspect-square overflow-hidden bg-[#F8EEE4]">
           <img
             src={product.images?.[0]?.image_url || '/default-product.jpeg'}
             alt={product.name}
@@ -98,7 +130,7 @@ export default function ProductCard({ product }) {
           />
 
           {/* Top Left Badge */}
-          <div className="absolute top-2 left-2 z-10">
+          <div className="absolute top-2 left-2 z-10 pointer-events-none">
             {renderBadge()}
           </div>
 
@@ -111,16 +143,14 @@ export default function ProductCard({ product }) {
           >
             <Heart className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${isWishlisted ? 'fill-[#E53935] text-[#E53935]' : ''}`} />
           </button>
-        </Link>
+        </div>
 
         {/* Product Info */}
         <div className="p-2.5 sm:p-3.5 flex flex-col justify-between flex-1">
           <div>
-            <Link href={`/product/${product.slug}`}>
-              <h3 className="font-sans font-semibold text-[14px] sm:text-[15px] leading-[1.4] text-[#2D1B16] line-clamp-1 group-hover:text-[#B87545] transition-colors">
-                {product.name}
-              </h3>
-            </Link>
+            <h3 className="font-sans font-semibold text-[14px] sm:text-[15px] leading-[1.4] text-[#2D1B16] line-clamp-1 group-hover:text-[#B87545] transition-colors">
+              {product.name}
+            </h3>
 
             {/* Stars & Rating - Only show if product has real reviews from DB */}
             {hasReviews && ratingFormatted ? (
@@ -154,7 +184,10 @@ export default function ProductCard({ product }) {
           {/* Actions: Add to Cart button + Heart Button next to it */}
           <div className="mt-2.5 pt-1">
             {cartItem ? (
-              <div className="flex items-center justify-between bg-[#F8EEE4] border border-[#E8C7AF] rounded-lg p-0.5 sm:p-1">
+              <div
+                onClick={(e) => e.stopPropagation()}
+                className="flex items-center justify-between bg-[#F8EEE4] border border-[#E8C7AF] rounded-lg p-0.5 sm:p-1"
+              >
                 <Button
                   variant="ghost"
                   size="sm"

@@ -27,11 +27,28 @@ export default function SupportPage() {
 
     const fetchTickets = async () => {
         try {
+            setLoading(true)
             // Use API instead of direct Supabase call to avoid session issues on reload
             const data = await supportAPI.getAll()
             setTickets(data || [])
         } catch (error) {
-            console.error('Error fetching tickets:', error)
+            console.error('Error fetching tickets via API:', error)
+            // Robust fallback to direct client query
+            try {
+                if (user?.id) {
+                    const { data: clientData, error: clientError } = await supabase
+                        .from('support_tickets')
+                        .select('*')
+                        .eq('user_id', user.id)
+                        .order('created_at', { ascending: false })
+                    if (!clientError) {
+                        setTickets(clientData || [])
+                        return
+                    }
+                }
+            } catch (fallbackErr) {
+                console.error('Client query fallback failed:', fallbackErr)
+            }
             toast.error('Failed to load tickets')
         } finally {
             setLoading(false)

@@ -18,8 +18,8 @@ module.exports = {
     },
     extend: {
       fontFamily: {
-        sans: ['var(--font-sans)', 'Manrope', 'sans-serif'],
-        serif: ['var(--font-serif)', 'Playfair Display', 'serif'],
+        sans: ["'Manrope'", '-apple-system', 'BlinkMacSystemFont', "'Segoe UI'", 'Roboto', 'sans-serif'],
+        serif: ["'Playfair Display'", 'Georgia', 'Cambria', 'serif'],
         script: ['Allura', 'Parisienne', 'cursive'],
       },
       colors: {

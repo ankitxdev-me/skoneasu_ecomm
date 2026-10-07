@@ -940,7 +940,6 @@ async function handleGetPinnedReviews() {
       product:products(name, slug, images:product_images(image_url))
     `)
     .eq('is_pinned', true)
-    .limit(12)
     .order('created_at', { ascending: false })
 
   if (error) throw error
@@ -1050,18 +1049,6 @@ async function handleAdminTogglePinReview(request, reviewId) {
     .single()
 
   const newState = !review.is_pinned
-
-  if (newState) {
-    // Check limit
-    const { count } = await scopedSupabase
-      .from('reviews')
-      .select('*', { count: 'exact', head: true })
-      .eq('is_pinned', true)
-
-    if (count >= 3) {
-      throw new Error('Maximum 3 reviews can be pinned')
-    }
-  }
 
   const { data, error } = await scopedSupabase
     .from('reviews')
@@ -1496,45 +1483,84 @@ async function handleValidateCoupon(body) {
 // ============ SUPPORT ENDPOINTS ============
 
 async function handleGetSupportTickets(request) {
-  const user = await getAuthUser(request)
+  const { user, scopedSupabase } = await getAuthUser(request)
   if (!user) throw new Error('Unauthorized')
 
-  const { data, error } = await supabase
+  const { data, error } = await scopedSupabase
     .from('support_tickets')
     .select('*')
     .eq('user_id', user.id)
     .order('created_at', { ascending: false })
 
-  if (error) throw error
-  return data
+  if (error) {
+    // If scoped client error, attempt fallback to supabase with verified user.id
+    const { data: fallbackData, error: fallbackError } = await supabase
+      .from('support_tickets')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+
+    if (fallbackError) throw fallbackError
+    return fallbackData || []
+  }
+
+  return data || []
 }
 
 async function handleGetSupportTicketDetails(request, ticketId) {
-  const user = await getAuthUser(request)
+  const { user, scopedSupabase } = await getAuthUser(request)
   if (!user) throw new Error('Unauthorized')
 
+  const userIsAdmin = await isAdmin(user.id)
+
   // Fetch ticket
-  const { data: ticket, error: ticketError } = await supabase
+  let query = scopedSupabase
     .from('support_tickets')
     .select('*')
     .eq('id', ticketId)
-    .eq('user_id', user.id)
-    .single()
 
-  if (ticketError) throw ticketError
+  if (!userIsAdmin) {
+    query = query.eq('user_id', user.id)
+  }
+
+  let { data: ticket, error: ticketError } = await query.single()
+
+  if (ticketError) {
+    // Fallback attempt
+    let fbQuery = supabase
+      .from('support_tickets')
+      .select('*')
+      .eq('id', ticketId)
+
+    if (!userIsAdmin) {
+      fbQuery = fbQuery.eq('user_id', user.id)
+    }
+
+    const { data: fbTicket, error: fbError } = await fbQuery.single()
+    if (fbError) throw ticketError
+    ticket = fbTicket
+  }
 
   // Fetch messages
-  const { data: messages, error: messagesError } = await supabase
+  let { data: messages, error: messagesError } = await scopedSupabase
     .from('support_messages')
     .select('*')
     .eq('ticket_id', ticketId)
     .order('created_at', { ascending: true })
 
-  if (messagesError) throw messagesError
+  if (messagesError) {
+    const { data: fbMessages, error: fbMsgError } = await supabase
+      .from('support_messages')
+      .select('*')
+      .eq('ticket_id', ticketId)
+      .order('created_at', { ascending: true })
+
+    if (!fbMsgError) messages = fbMessages
+  }
 
   return {
     ...ticket,
-    messages
+    messages: messages || []
   }
 }
 
@@ -1632,9 +1658,10 @@ export async function GET(request, context) {
 
   } catch (error) {
     console.error('API Error:', error)
+    const status = error.message === 'Unauthorized' ? 401 : 500
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
-      { status: 500 }
+      { status }
     )
   }
 }
@@ -1964,7 +1991,8 @@ export async function POST(request, context) {
 
   } catch (error) {
     console.error('API Error:', error)
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 })
+    const status = error.message === 'Unauthorized' ? 401 : 500
+    return NextResponse.json({ error: error.message || 'Internal server error' }, { status })
   }
 }
 

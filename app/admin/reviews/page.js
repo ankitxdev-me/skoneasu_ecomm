@@ -84,7 +84,7 @@ export default function AdminReviewsPage() {
                 </div>
                 <div className="flex items-center gap-2">
                     <Badge variant="secondary" className="text-sm">
-                        Pinned: {pinnedCount}/3
+                        Pinned: {pinnedCount}
                     </Badge>
                 </div>
             </div>
@@ -160,7 +160,7 @@ export default function AdminReviewsPage() {
                                                     size="icon"
                                                     onClick={() => handleTogglePin(review.id)}
                                                     className={review.is_pinned ? "text-blue-600 bg-blue-50" : "text-muted-foreground"}
-                                                    title={review.is_pinned ? "Unpin" : "Pin to Homepage (Max 3)"}
+                                                    title={review.is_pinned ? "Unpin" : "Pin to Homepage"}
                                                 >
                                                     {review.is_pinned ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
                                                 </Button>

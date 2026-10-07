@@ -48,18 +48,31 @@ export default function TicketDetailPage() {
         try {
             // Use API client
             const data = await supportAPI.getById(id)
-            setTicket(data) // data contains mixed ticket fields and messages based on our API design? 
-            // Wait, our API returns { ...ticket, messages }
-            // So ticket state should be just ticket fields?
-            // Existing code expects `ticket` state to be the ticket object, and `messages` state to be array.
-
-            // Let's destructure
             const { messages: msgs, ...ticketInfo } = data
             setTicket(ticketInfo)
             setMessages(msgs || [])
-
         } catch (error) {
-            console.error('Error fetching ticket data:', error)
+            console.error('Error fetching ticket data via API:', error)
+            try {
+                // Client fallback
+                const { data: clientTicket, error: ticketErr } = await supabase
+                    .from('support_tickets')
+                    .select('*')
+                    .eq('id', id)
+                    .single()
+                if (!ticketErr && clientTicket) {
+                    setTicket(clientTicket)
+                    const { data: clientMsgs } = await supabase
+                        .from('support_messages')
+                        .select('*')
+                        .eq('ticket_id', id)
+                        .order('created_at', { ascending: true })
+                    setMessages(clientMsgs || [])
+                    return
+                }
+            } catch (fallbackErr) {
+                console.error('Client fallback failed:', fallbackErr)
+            }
             toast.error('Failed to load ticket details')
         } finally {
             setLoading(false)

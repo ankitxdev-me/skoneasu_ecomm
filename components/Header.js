@@ -102,7 +102,8 @@ export default function Header() {
   const announcements = [
     { icon: '🎁', text: 'Free Shipping on Orders Above ₹499' },
     { icon: '✨', text: 'Meaningful Gifts & Premium Quality' },
-    { icon: '❤️', text: 'Loved by 1000+ Happy Customers' }
+    { icon: '❤️', text: 'Loved by 1000+ Happy Customers' },
+    { isLinks: true }
   ]
   const [currentAnnouncement, setCurrentAnnouncement] = useState(0)
   const [touchStart, setTouchStart] = useState(null)
@@ -183,7 +184,7 @@ export default function Header() {
 
           {/* Desktop Right */}
           <div className="flex items-center gap-4 font-sans font-medium text-[12px] opacity-85">
-            <Link href="/orders" className="hover:text-[#E8C7AF] transition-colors flex items-center gap-1">
+            <Link href="/dashboard?tab=orders" className="hover:text-[#E8C7AF] transition-colors flex items-center gap-1">
               <span>Track Order</span>
             </Link>
             <span className="opacity-40">|</span>
@@ -220,10 +221,32 @@ export default function Header() {
                   key={idx}
                   className="w-full shrink-0 flex items-center justify-center gap-1.5 px-1"
                 >
-                  <span className="text-xs shrink-0">{item.icon}</span>
-                  <span className="font-sans font-medium text-[12px] sm:text-[13px] tracking-normal truncate text-center text-[#FFF9F3]">
-                    {item.text}
-                  </span>
+                  {item.isLinks ? (
+                    <div className="flex items-center justify-center gap-3 font-sans font-medium text-[12px] sm:text-[13px] text-[#FFF9F3]">
+                      <Link
+                        href="/dashboard?tab=orders"
+                        className="hover:text-[#E8C7AF] active:text-[#E8C7AF] transition-colors"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        Track Order
+                      </Link>
+                      <span className="opacity-40 select-none">|</span>
+                      <Link
+                        href="/support"
+                        className="hover:text-[#E8C7AF] active:text-[#E8C7AF] transition-colors"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        Help
+                      </Link>
+                    </div>
+                  ) : (
+                    <>
+                      <span className="text-xs shrink-0">{item.icon}</span>
+                      <span className="font-sans font-medium text-[12px] sm:text-[13px] tracking-normal truncate text-center text-[#FFF9F3]">
+                        {item.text}
+                      </span>
+                    </>
+                  )}
                 </div>
               ))}
             </div>
@@ -252,7 +275,6 @@ export default function Header() {
           </div>
 
         </div>
-
       </div>
 
       {/* 2. MAIN NAVBAR */}
@@ -510,11 +532,32 @@ export default function Header() {
           <div className="pt-4 border-t border-[#E8C7AF]/40">
             {user ? (
               <div className="space-y-2">
-                <p className="text-xs text-[#5A382B] truncate">{profile?.full_name || user.email}</p>
-                <Button size="sm" variant="outline" asChild className="w-full text-xs border-[#3E2923]">
-                  <Link href="/orders" onClick={() => setMobileMenuOpen(false)}>My Orders</Link>
+                <div className="pb-1">
+                  <p className="text-[11px] text-[#7A665E]">Signed in as</p>
+                  <p className="text-sm font-semibold truncate text-[#2D1B16]">{profile?.full_name || user.email}</p>
+                </div>
+
+                {isAdmin && (
+                  <Button size="sm" asChild className="w-full text-xs bg-[#B87545] hover:bg-[#9E5F35] text-white font-medium justify-center">
+                    <Link href="/admin/orders" onClick={() => setMobileMenuOpen(false)}>
+                      Admin Dashboard
+                    </Link>
+                  </Button>
+                )}
+
+                <Button size="sm" variant="outline" asChild className="w-full text-xs border-[#3E2923] text-[#2D1B16] hover:bg-[#F8EEE4] justify-center">
+                  <Link href="/dashboard" onClick={() => setMobileMenuOpen(false)}>
+                    My Dashboard
+                  </Link>
                 </Button>
-                <Button size="sm" variant="ghost" onClick={signOut} className="w-full text-xs text-red-700">
+
+                <Button size="sm" variant="outline" asChild className="w-full text-xs border-[#3E2923]/60 text-[#2D1B16] hover:bg-[#F8EEE4] justify-center">
+                  <Link href="/orders" onClick={() => setMobileMenuOpen(false)}>
+                    My Orders
+                  </Link>
+                </Button>
+
+                <Button size="sm" variant="ghost" onClick={signOut} className="w-full text-xs text-red-700 hover:text-red-800 hover:bg-red-50 mt-1">
                   Sign Out
                 </Button>
               </div>

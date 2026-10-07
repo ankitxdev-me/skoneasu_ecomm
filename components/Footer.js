@@ -10,6 +10,8 @@ import {
   Youtube,
   Mail,
   ChevronDown,
+  ChevronRight,
+  X,
   Truck,
   ShieldCheck,
   Gift,
@@ -25,9 +27,103 @@ function PinterestIcon({ className = 'w-4 h-4' }) {
   )
 }
 
+
+// Branded Social & Developer SVG Icons
+function WhatsAppIcon({ className = 'w-4 h-4' }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21 5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.816 9.816 0 0 0 12.04 2zm.01 1.67c2.2 0 4.26.86 5.82 2.41a8.17 8.17 0 0 1 2.41 5.83c0 4.54-3.7 8.24-8.24 8.24-1.48 0-2.93-.4-4.2-1.15l-.3-.18-3.12.82.83-3.04-.2-.31a8.18 8.18 0 0 1-1.26-4.38c0-4.54 3.7-8.24 8.24-8.24zm4.51 11.64c-.25-.13-1.47-.72-1.7-.81-.23-.08-.39-.13-.56.13-.17.25-.64.81-.79.97-.14.17-.29.19-.54.06-.25-.13-1.06-.39-2.02-1.25-.75-.67-1.25-1.49-1.4-1.74-.14-.25-.02-.39.11-.51.11-.11.25-.29.38-.44.13-.14.17-.25.25-.42.08-.17.04-.31-.02-.44-.06-.13-.56-1.34-.76-1.84-.2-.49-.4-.42-.56-.43h-.47c-.17 0-.44.06-.67.31-.23.25-.88.86-.88 2.1 0 1.24.9 2.44 1.03 2.61.13.17 1.78 2.72 4.31 3.81.6.26 1.07.42 1.44.54.61.19 1.16.17 1.6.1.49-.07 1.47-.6 1.68-1.18.21-.59.21-1.09.15-1.19-.06-.1-.23-.17-.48-.29z"/>
+    </svg>
+  )
+}
+
+function LinkedInIcon({ className = 'w-4 h-4' }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.28 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.75M6.88 8.56a1.68 1.68 0 0 0 1.68-1.68c0-.93-.75-1.69-1.68-1.69a1.69 1.69 0 0 0-1.69 1.69c0 .93.76 1.68 1.69 1.68m1.39 9.94v-8.37H5.5v8.37h2.77z"/>
+    </svg>
+  )
+}
+
+function GitHubIcon({ className = 'w-4 h-4' }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <path fillRule="evenodd" clipRule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/>
+    </svg>
+  )
+}
+
+function InstagramGradientIcon({ className = 'w-4 h-4' }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
+    </svg>
+  )
+}
+
+
+const DEVELOPER_CHANNELS = [
+  {
+    id: 'email',
+    title: 'Email',
+    subtitle: 'Send me an email',
+    href: 'mailto:ankitgupta72724@gmail.com?subject=Inquiry%20from%20SKONEASU%20Website',
+    iconBg: 'bg-[#96522E]',
+    icon: <Mail className="w-4 h-4 text-white" />
+  },
+  {
+    id: 'whatsapp',
+    title: 'WhatsApp',
+    subtitle: 'Chat with me directly',
+    href: 'https://wa.me/919336106110?text=Hi%20Ankit%2C%20I%20saw%20your%20work%20on%20SKONEASU',
+    iconBg: 'bg-[#25D366]',
+    icon: <WhatsAppIcon className="w-4 h-4 text-white" />
+  },
+  {
+    id: 'linkedin',
+    title: 'LinkedIn',
+    subtitle: 'Connect professionally',
+    href: 'https://www.linkedin.com/in/ankitxdev-me',
+    iconBg: 'bg-[#0A66C2]',
+    icon: <LinkedInIcon className="w-4 h-4 text-white" />
+  },
+  {
+    id: 'github',
+    title: 'GitHub',
+    subtitle: 'View my projects',
+    href: 'https://github.com/ankitxdev-me',
+    iconBg: 'bg-[#202020]',
+    icon: <GitHubIcon className="w-4 h-4 text-white" />
+  },
+  {
+    id: 'instagram',
+    title: 'Instagram',
+    subtitle: '@ankitxtech.me',
+    href: 'https://instagram.com/ankitxtech.me',
+    iconBg: 'bg-gradient-to-tr from-[#f09433] via-[#dc2743] to-[#bc1888]',
+    icon: <InstagramGradientIcon className="w-4 h-4 text-white" />
+  }
+]
+
 export default function Footer() {
   // Mobile accordion states (Developer open by default as in reference image)
   const [openSection, setOpenSection] = useState('developer')
+  // Developer Contact Modal / Popover States
+  const [desktopContactOpen, setDesktopContactOpen] = useState(false)
+  const [mobileContactOpen, setMobileContactOpen] = useState(false)
+
+  // Prevent background scrolling when mobile contact drawer is open
+  useEffect(() => {
+    if (mobileContactOpen) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = ''
+    }
+    return () => {
+      document.body.style.overflow = ''
+    }
+  }, [mobileContactOpen])
+
 
   // Dynamic social media channels configured from Admin Dashboard
   const [socialLinks, setSocialLinks] = useState({
@@ -242,25 +338,88 @@ export default function Footer() {
           </div>
 
           {/* Column 5: DEVELOPER (col-span-2 with left vertical divider) */}
-          <div className="lg:col-span-2 pl-6 lg:border-l lg:border-[#331E14]">
-            <h4 className="font-serif font-bold text-sm tracking-wider uppercase text-white mb-3">
+          <div className="lg:col-span-2 pl-6 lg:border-l lg:border-[#331E14] relative">
+            <h4 className="font-serif font-bold text-sm tracking-wider uppercase text-white mb-4">
               DEVELOPER
             </h4>
-            <div className="text-[12px] leading-relaxed text-[#CDB5A6] mb-4 font-sans">
-              <p>Built &amp; Designed by</p>
-              <p className="font-semibold text-white text-[13px] mt-0.5">Ankit Gupta</p>
-              <p className="mt-2 text-[#B59E91] text-[11.5px]">
-                Freelance Developer &amp; Problem Solver.
-              </p>
+            
+            {/* Developer Profile Card (Exact match to desktop mockup) */}
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-[#824E2E] text-white flex items-center justify-center font-serif text-base font-bold shrink-0 shadow-sm border border-[#A66840]/60">
+                A
+              </div>
+              <div>
+                <h5 className="font-semibold text-white text-[13.5px] leading-tight">Ankit Gupta</h5>
+                <p className="text-[11.5px] text-[#B59E91] leading-tight mt-0.5">
+                  Freelance Developer &amp; Problem Solver.
+                </p>
+              </div>
             </div>
 
-            <a
-              href="mailto:ankitgupta72724@gmail.com?subject=Inquiry%20from%20SKONEASU%20Website"
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-[#D4A373]/60 text-white text-xs font-medium hover:bg-[#D4A373]/15 transition-all active:scale-95 group"
-            >
-              <Mail className="w-3.5 h-3.5 text-[#D4A373] group-hover:scale-110 transition-transform" />
-              <span>Contact Developer</span>
-            </a>
+            {/* Contact Developer Button (Desktop Trigger) */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setDesktopContactOpen(!desktopContactOpen)}
+                className="inline-flex items-center justify-between gap-2.5 px-4 py-2 rounded-full border border-[#D4A373]/60 bg-[#24130A]/60 hover:bg-[#D4A373]/15 text-[#FFF9F3] text-xs font-semibold transition-all shadow-xs cursor-pointer active:scale-95 group"
+              >
+                <div className="flex items-center gap-2">
+                  <Mail className="w-3.5 h-3.5 text-[#D4A373] group-hover:scale-110 transition-transform" />
+                  <span>Contact Developer</span>
+                </div>
+                <ChevronDown className={`w-3.5 h-3.5 text-[#D4A373] transition-transform duration-200 ${desktopContactOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {/* Desktop Popover Menu (Dark themed as in mockup) */}
+              {desktopContactOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setDesktopContactOpen(false)}
+                  />
+                  <div className="absolute left-0 bottom-full mb-3 w-[285px] bg-[#1C0F08] border border-[#3E2416] rounded-2xl p-3.5 shadow-2xl z-50 animate-in fade-in zoom-in-95 duration-200">
+                    <div className="flex items-center justify-between pb-2.5 mb-2 border-b border-[#331C11]">
+                      <span className="font-serif font-bold text-sm text-[#FFF9F3]">
+                        Contact Developer
+                      </span>
+                      <button
+                        onClick={() => setDesktopContactOpen(false)}
+                        className="text-[#968275] hover:text-white p-1 rounded-full hover:bg-white/10 transition-colors cursor-pointer"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <div className="space-y-1">
+                      {DEVELOPER_CHANNELS.map((ch) => (
+                        <a
+                          key={ch.id}
+                          href={ch.href}
+                          target={ch.id !== 'email' ? '_blank' : undefined}
+                          rel={ch.id !== 'email' ? 'noopener noreferrer' : undefined}
+                          className="flex items-center justify-between p-2 rounded-xl hover:bg-[#2A160D] transition-colors group text-left cursor-pointer"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className={`w-8 h-8 rounded-full ${ch.iconBg} flex items-center justify-center shrink-0 shadow-xs`}>
+                              {ch.icon}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-[12.5px] font-semibold text-[#FFF9F3] group-hover:text-white leading-tight">
+                                {ch.title}
+                              </p>
+                              <p className="text-[10.5px] text-[#A68F81] group-hover:text-[#CDB5A6] leading-tight truncate">
+                                {ch.subtitle}
+                              </p>
+                            </div>
+                          </div>
+                          <ChevronRight className="w-3.5 h-3.5 text-[#73533D] group-hover:text-[#D4A373] group-hover:translate-x-0.5 transition-all shrink-0 ml-1.5" />
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
 
         </div>
@@ -493,7 +652,7 @@ export default function Footer() {
             {openSection === 'developer' && (
               <div className="pb-5 pt-1 pl-1">
                 <div className="flex items-center gap-3.5 mb-4">
-                  <div className="w-11 h-11 rounded-full bg-[#824E2E] text-white flex items-center justify-center font-serif text-lg font-bold shrink-0 shadow-sm">
+                  <div className="w-11 h-11 rounded-full bg-[#824E2E] text-white flex items-center justify-center font-serif text-lg font-bold shrink-0 shadow-sm border border-[#A66840]/60">
                     A
                   </div>
                   <div>
@@ -504,13 +663,15 @@ export default function Footer() {
                   </div>
                 </div>
 
-                <a
-                  href="mailto:ankitgupta72724@gmail.com?subject=Inquiry%20from%20SKONEASU%20Website"
-                  className="w-full py-2.5 px-4 rounded-full border border-[#D4A373]/60 bg-[#24130A] flex items-center justify-center gap-2 text-white text-xs font-medium hover:bg-[#D4A373]/15 transition-all active:scale-98"
+                <button
+                  type="button"
+                  onClick={() => setMobileContactOpen(true)}
+                  className="w-full py-2.5 px-4 rounded-full border border-[#D4A373]/60 bg-[#24130A] flex items-center justify-center gap-2 text-white text-xs font-semibold hover:bg-[#D4A373]/15 transition-all active:scale-98 shadow-xs cursor-pointer"
                 >
                   <Mail className="w-3.5 h-3.5 text-[#D4A373]" />
                   <span>Contact Developer</span>
-                </a>
+                  <ChevronDown className="w-3.5 h-3.5 text-[#D4A373]" />
+                </button>
               </div>
             )}
           </div>
@@ -804,6 +965,71 @@ export default function Footer() {
         </div>
 
       </div>
+
+      {/* ============================================================ */}
+      {/* MOBILE DEVELOPER BOTTOM SHEET (Exact Match to Mockup)        */}
+      {/* ============================================================ */}
+      {mobileContactOpen && (
+        <div className="fixed inset-0 z-[120] block lg:hidden">
+          {/* Backdrop Overlay */}
+          <div
+            className="fixed inset-0 bg-black/65 backdrop-blur-[2px] transition-opacity animate-in fade-in duration-300"
+            onClick={() => setMobileContactOpen(false)}
+          />
+
+          {/* Bottom Sheet Drawer */}
+          <div className="fixed inset-x-0 bottom-0 z-[121] w-full max-w-lg mx-auto bg-[#F8EFE6] rounded-t-[32px] sm:rounded-t-[36px] p-5 pt-3 pb-7 shadow-2xl animate-in slide-in-from-bottom duration-300 border-t border-[#E8D7C7] max-h-[90vh] overflow-y-auto">
+            {/* Grab Handle Bar */}
+            <div className="w-12 h-1.5 bg-[#C9B2A2] rounded-full mx-auto mb-3.5" />
+
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 mb-1 px-1">
+              <h3 className="font-serif font-bold text-[22px] text-[#24130A] tracking-tight">
+                Contact Developer
+              </h3>
+              <button
+                type="button"
+                onClick={() => setMobileContactOpen(false)}
+                className="w-8 h-8 rounded-full flex items-center justify-center text-[#705648] hover:text-[#24130A] hover:bg-black/5 transition-colors cursor-pointer"
+                aria-label="Close"
+              >
+                <X className="w-5 h-5 stroke-[2]" />
+              </button>
+            </div>
+
+            {/* Channels List */}
+            <div className="space-y-2.5">
+              {DEVELOPER_CHANNELS.map((ch) => (
+                <a
+                  key={ch.id}
+                  href={ch.href}
+                  target={ch.id !== 'email' ? '_blank' : undefined}
+                  rel={ch.id !== 'email' ? 'noopener noreferrer' : undefined}
+                  className="flex items-center justify-between p-3.5 rounded-2xl bg-[#FFF9F3] hover:bg-white border border-[#EADBCE] shadow-2xs transition-all active:scale-[0.99] group text-left cursor-pointer"
+                >
+                  <div className="flex items-center gap-3.5 min-w-0">
+                    <div className={`w-10 h-10 rounded-full ${ch.iconBg} flex items-center justify-center shrink-0 shadow-xs`}>
+                      {ch.icon}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[14px] sm:text-[15px] font-semibold text-[#24130A] leading-tight font-sans">
+                        {ch.title}
+                      </p>
+                      <p className="text-[11.5px] sm:text-[12px] text-[#806B5E] leading-tight truncate mt-0.5 font-sans">
+                        {ch.subtitle}
+                      </p>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-[#A89284] group-hover:text-[#24130A] group-hover:translate-x-0.5 transition-all shrink-0 ml-2" />
+                </a>
+              ))}
+            </div>
+
+            {/* iOS Home Indicator Bar */}
+            <div className="w-32 h-1 bg-[#C9B2A2] rounded-full mx-auto mt-6" />
+          </div>
+        </div>
+      )}
     </footer>
   )
 }

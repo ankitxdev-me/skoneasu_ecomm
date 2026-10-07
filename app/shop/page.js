@@ -62,7 +62,14 @@ function ShopContent() {
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false)
 
   // Filters State
-  const [selectedCategory, setSelectedCategory] = useState(searchParams.get('category') || '')
+  const getInitialCategory = () => {
+    let cat = searchParams.get('category') || ''
+    const filter = searchParams.get('filter') || ''
+    if (!cat && (filter === 'new-arrivals' || filter === 'new-product')) return 'new-product'
+    if (cat === 'new-arrivals') return 'new-product'
+    return cat
+  }
+  const [selectedCategory, setSelectedCategory] = useState(getInitialCategory())
   const [searchQuery, setSearchQuery] = useState(searchParams.get('search') || '')
   const [sortBy, setSortBy] = useState(searchParams.get('sort') || 'newest')
   const [selectedRating, setSelectedRating] = useState(null)
@@ -79,7 +86,13 @@ function ShopContent() {
 
   // Sync with URL params
   useEffect(() => {
-    const cat = searchParams.get('category') || ''
+    let cat = searchParams.get('category') || ''
+    const filter = searchParams.get('filter') || ''
+    if (!cat && (filter === 'new-arrivals' || filter === 'new-product')) {
+      cat = 'new-product'
+    } else if (cat === 'new-arrivals') {
+      cat = 'new-product'
+    }
     const srch = searchParams.get('search') || ''
     const srt = searchParams.get('sort') || 'newest'
     setSelectedCategory(cat)

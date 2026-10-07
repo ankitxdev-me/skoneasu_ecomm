@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import {
   ArrowRight,
   Gift,
@@ -26,6 +27,7 @@ import { useCart } from '@/contexts/CartContext'
 import { useWishlist } from '@/contexts/WishlistContext'
 
 export default function HomePage() {
+  const router = useRouter()
   const { addToCart } = useCart()
   const { isInWishlist, toggleWishlist } = useWishlist()
   const [products, setProducts] = useState([])
@@ -120,6 +122,70 @@ export default function HomePage() {
       return Math.round(((p.price - p.discount_price) / p.price) * 100)
     }
     return null
+  }
+
+  // Dynamic badge mapping:
+  // - New Arrivals section => always 'New'
+  // - Discount <= 30% => '-X%'
+  // - Discount 31% to 49% => 'Sale'
+  // - Discount >= 50% => 'Special Offer'
+  // - Fallbacks for new_arrival and best_seller
+  const renderProductBadge = (item, isNewArrivalSection = false) => {
+    if (isNewArrivalSection) {
+      return (
+        <span className="absolute top-1.5 left-1.5 sm:top-2 sm:left-2 z-10 bg-[#B87545] text-white text-[9px] sm:text-[10px] font-semibold px-1.5 sm:px-2 py-0.5 rounded shadow-xs pointer-events-none">
+          New
+        </span>
+      )
+    }
+    const discount = getProductDiscountPercent(item)
+    if (discount && discount > 0) {
+      if (discount <= 30) {
+        return (
+          <span className="absolute top-1.5 left-1.5 sm:top-2 sm:left-2 z-10 bg-[#E53935] text-white text-[9px] sm:text-[10px] font-semibold px-1.5 sm:px-2 py-0.5 rounded shadow-xs pointer-events-none">
+            -{discount}%
+          </span>
+        )
+      } else if (discount <= 49) {
+        return (
+          <span className="absolute top-1.5 left-1.5 sm:top-2 sm:left-2 z-10 bg-[#E53935] text-white text-[9px] sm:text-[10px] font-semibold px-1.5 sm:px-2 py-0.5 rounded shadow-xs pointer-events-none">
+            Sale
+          </span>
+        )
+      } else {
+        return (
+          <span className="absolute top-1.5 left-1.5 sm:top-2 sm:left-2 z-10 bg-[#E53935] text-white text-[9px] sm:text-[10px] font-semibold px-1.5 sm:px-2 py-0.5 rounded shadow-xs pointer-events-none">
+            Special Offer
+          </span>
+        )
+      }
+    }
+    if (item?.new_arrival) {
+      return (
+        <span className="absolute top-1.5 left-1.5 sm:top-2 sm:left-2 z-10 bg-[#B87545] text-white text-[9px] sm:text-[10px] font-semibold px-1.5 sm:px-2 py-0.5 rounded shadow-xs pointer-events-none">
+          New
+        </span>
+      )
+    }
+    if (item?.best_seller) {
+      return (
+        <span className="absolute top-1.5 left-1.5 sm:top-2 sm:left-2 z-10 bg-[#E53935] text-white text-[9px] sm:text-[10px] font-semibold px-1.5 sm:px-2 py-0.5 rounded shadow-xs pointer-events-none">
+          Bestseller
+        </span>
+      )
+    }
+    return null
+  }
+
+  const getSpotlightBadge = (p) => {
+    if (!p) return null
+    const d = getProductDiscountPercent(p)
+    if (d && d > 0) {
+      if (d <= 30) return `-${d}%`
+      if (d <= 49) return 'Sale'
+      return 'Special Offer'
+    }
+    return p.best_seller ? 'Bestseller' : 'Featured'
   }
 
   // Pure dynamic data references from database state (Spotlight uses best_seller, remaining fill cards without duplication)
@@ -287,12 +353,12 @@ export default function HomePage() {
             <div className="flex items-center justify-between gap-4 lg:gap-8">
               
               {/* Left Header Area: Compact & balanced */}
-              <div className="shrink-0 w-[180px] lg:w-[210px] text-left">
-                <h2 className="font-serif font-semibold text-2xl lg:text-[28px] xl:text-[32px] text-[#2D1B16] leading-[1.1] tracking-[-0.015em]">
+              <div className="shrink-0 w-[210px] sm:w-[230px] lg:w-[250px] text-left">
+                <h2 className="font-serif font-bold text-[22px] sm:text-[25px] lg:text-[28px] text-[#2D1B16] leading-tight tracking-[-0.015em] whitespace-nowrap">
                   Shop by Category
                 </h2>
-                <p className="font-sans font-normal text-[13px] lg:text-[14px] text-[#8C6B58] leading-[1.55] mt-1">
-                  Explore our curated collections for every special moment
+                <p className="font-sans font-normal text-[12.5px] sm:text-[13px] lg:text-[13.5px] text-[#7A665E] leading-[1.45] mt-1.5 max-w-[230px]">
+                  Explore our curated collections<br className="hidden sm:inline" /> for every special moment
                 </p>
               </div>
 
@@ -303,16 +369,16 @@ export default function HomePage() {
                 <div className="relative flex-1 min-w-0 overflow-hidden">
                   <div
                     id="category-scroll-container"
-                    className="flex items-center gap-3 sm:gap-4 md:gap-5 overflow-x-auto scroll-smooth hide-scrollbar py-1"
+                    className="flex items-center justify-between gap-3 sm:gap-4 md:gap-5 lg:gap-6 min-w-full overflow-x-auto scroll-smooth hide-scrollbar py-1"
                     style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
                   >
                     {categories.map((cat) => (
                       <Link
                         key={cat.id || cat.slug}
                         href={`/shop?category=${encodeURIComponent(cat.slug)}`}
-                        className="group flex flex-col items-center text-center shrink-0 w-[78px] sm:w-[84px] md:w-[88px] lg:w-[92px] focus:outline-none"
+                        className="group flex flex-col items-center text-center shrink-0 w-[84px] sm:w-[94px] md:w-[102px] lg:w-[112px] xl:w-[118px] focus:outline-none"
                       >
-                        <div className="w-14 h-14 sm:w-15 sm:h-15 md:w-16 md:h-16 lg:w-[68px] lg:h-[68px] rounded-full p-1 bg-[#F5EBE1] border border-[#E8C7AF]/60 group-hover:border-[#B87545] transition-all duration-300 group-hover:scale-105 shadow-xs aspect-square flex items-center justify-center">
+                        <div className="w-[62px] h-[62px] sm:w-[70px] sm:h-[70px] md:w-[76px] md:h-[76px] lg:w-[82px] lg:h-[82px] xl:w-[86px] xl:h-[86px] rounded-full p-1 bg-[#F5EBE1] border border-[#E8C7AF]/70 group-hover:border-[#B87545] transition-all duration-300 group-hover:scale-105 shadow-xs aspect-square flex items-center justify-center">
                           <div className="w-full h-full rounded-full overflow-hidden bg-[#FAF2EB]">
                             <img
                               src={cat.image_url}
@@ -323,14 +389,7 @@ export default function HomePage() {
                           </div>
                         </div>
                         <span
-                          className="font-sans font-semibold text-[13px] sm:text-[14px] text-[#2D1B16] mt-2 group-hover:text-[#B87545] transition-colors leading-[1.3] text-center max-w-full block px-0.5 tracking-normal"
-                          style={{
-                            fontFamily: '"Manrope", sans-serif',
-                            fontWeight: 600,
-                            fontSize: 'clamp(13px, 1.05vw, 14px)',
-                            lineHeight: '1.3',
-                            textAlign: 'center'
-                          }}
+                          className="font-sans font-semibold text-[13px] sm:text-[13.5px] lg:text-[14px] text-[#2D1B16] mt-2 group-hover:text-[#B87545] transition-colors leading-[1.3] text-center max-w-full block px-0.5 tracking-normal whitespace-nowrap"
                         >
                           {cat.name}
                         </span>
@@ -507,22 +566,22 @@ export default function HomePage() {
       <section className="w-full max-w-[1440px] mx-auto px-3 sm:px-4 md:px-6 lg:px-8 mb-12 sm:mb-16 lg:mb-20">
         
         {/* Section Header */}
-        <div className="flex items-center justify-between mb-4 sm:mb-6">
+        <div className="flex items-end sm:items-center justify-between gap-3 mb-3.5 sm:mb-6">
           <div>
-            <span className="text-[11px] sm:text-xs font-semibold uppercase tracking-[0.18em] text-[#8C4B23] flex items-center gap-1.5 mb-1">
+            <span className="font-sans text-[10px] sm:text-xs font-semibold uppercase tracking-[0.16em] sm:tracking-[0.18em] text-[#8C4B23] flex items-center gap-1.5 mb-0.5 sm:mb-1">
               &mdash; HANDPICKED FOR EVERY MOMENT
             </span>
-            <h2 className="font-serif text-2xl sm:text-3xl font-semibold text-[#2D1B16] tracking-[-0.02em] leading-[1.05]">
+            <h2 className="font-serif text-[22px] sm:text-2xl md:text-3xl font-bold sm:font-semibold text-[#2D1B16] tracking-[-0.02em] leading-tight sm:leading-[1.05]">
               Featured <span className="text-[#C8845C]">Collection</span>
             </h2>
-            <p className="text-xs sm:text-[13px] text-[#5A382B] mt-0.5">
+            <p className="hidden sm:block text-xs sm:text-[13px] text-[#5A382B] mt-0.5">
               Handpicked masterpieces that embody luxury and timeless beauty
             </p>
           </div>
 
           <Link
             href="/shop"
-            className="text-xs font-semibold text-[#2D1B16] border border-[#2D1B16] lg:border-none lg:bg-[#2D1B16] lg:text-[#FFF9F3] lg:hover:bg-[#1A0E0A] px-3.5 py-1.5 lg:px-4 lg:py-2 rounded-full lg:rounded-lg transition-colors flex items-center gap-1 shrink-0"
+            className="text-[11.5px] sm:text-xs font-semibold text-[#2D1B16] border border-[#2D1B16]/30 hover:border-[#2D1B16] bg-white/60 hover:bg-[#2D1B16] hover:text-white lg:border-none lg:bg-[#2D1B16] lg:text-[#FFF9F3] lg:hover:bg-[#1A0E0A] px-3 sm:px-3.5 py-1.5 lg:px-4 lg:py-2 rounded-full lg:rounded-lg transition-all flex items-center gap-1 shrink-0 self-end sm:self-center shadow-xs"
           >
             View All Products &rarr;
           </Link>
@@ -580,7 +639,7 @@ export default function HomePage() {
             {/* DESKTOP LAYOUT (lg and up): 1 Spotlight Card on Left + 4 Cards on Right */}
             <div className="hidden lg:flex items-stretch gap-4 xl:gap-5">
               {/* Spotlight Card */}
-              <div className="w-[38%] shrink-0 relative rounded-2xl overflow-hidden min-h-[360px] flex flex-col justify-between p-6 xl:p-7 shadow-sm border border-[#F0E4D8]/70 bg-[#1A0A06] group">
+              <div onClick={() => router.push(`/product/${featuredSpotlight.slug}`)} className="w-[38%] shrink-0 relative rounded-2xl overflow-hidden min-h-[360px] flex flex-col justify-between p-6 xl:p-7 shadow-sm border border-[#F0E4D8]/70 bg-[#1A0A06] group cursor-pointer">
                 <img
                   src={getProductImage(featuredSpotlight)}
                   alt={featuredSpotlight.name}
@@ -590,11 +649,11 @@ export default function HomePage() {
 
                 <div className="relative z-10 flex items-center justify-between">
                   <span className="bg-[#A64B2A] text-white text-[11px] font-semibold px-2.5 py-0.5 rounded shadow-xs">
-                    {featuredSpotlight.discount_price ? 'Special Offer' : 'Bestseller'}
+                    {getSpotlightBadge(featuredSpotlight)}
                   </span>
                   <button
                     type="button"
-                    onClick={() => toggleWishlist(featuredSpotlight)}
+                    onClick={(e) => { e.stopPropagation(); toggleWishlist(featuredSpotlight); }}
                     className="w-8 h-8 rounded-full bg-white/90 hover:bg-white text-neutral-700 flex items-center justify-center transition-all shadow-xs"
                     aria-label="Wishlist"
                   >
@@ -627,7 +686,7 @@ export default function HomePage() {
                   )}
 
                   <Button
-                    onClick={() => addToCart(featuredSpotlight)}
+                    onClick={(e) => { e.stopPropagation(); addToCart(featuredSpotlight); }}
                     className="bg-[#F8EEE4] hover:bg-white text-[#2D1B16] text-xs font-semibold h-10 px-5 rounded-lg inline-flex items-center gap-2 shadow-sm transition-all duration-200"
                   >
                     <ShoppingCart className="w-4 h-4" /> Add to Cart
@@ -643,7 +702,7 @@ export default function HomePage() {
                   const rating = ratingData?.rating
                   const count = ratingData?.count
                   return (
-                    <div key={item.id} className="bg-white rounded-xl border border-[#E8C7AF]/60 p-3 flex flex-col justify-between hover:shadow-md transition-all group">
+                    <div key={item.id} onClick={() => router.push(`/product/${item.slug}`)} className="bg-white rounded-xl border border-[#E8C7AF]/60 p-3 flex flex-col justify-between hover:shadow-md transition-all group cursor-pointer">
                       <div>
                         <div className="relative aspect-square rounded-lg overflow-hidden bg-[#FAF2EB] mb-2.5">
                           <img
@@ -651,14 +710,10 @@ export default function HomePage() {
                             alt={item.name}
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                           />
-                          {discount && (
-                            <span className="absolute top-2 left-2 z-10 bg-[#E53935] text-white text-[10px] font-semibold px-2 py-0.5 rounded shadow-xs">
-                              -{discount}%
-                            </span>
-                          )}
+                          {renderProductBadge(item)}
                           <button
                             type="button"
-                            onClick={() => toggleWishlist(item)}
+                            onClick={(e) => { e.stopPropagation(); toggleWishlist(item); }}
                             className="absolute top-2 right-2 z-10 w-7 h-7 rounded-full bg-white/90 hover:bg-white text-neutral-600 flex items-center justify-center transition-all shadow-xs"
                             aria-label="Wishlist"
                           >
@@ -692,7 +747,7 @@ export default function HomePage() {
 
                       <Button
                         size="sm"
-                        onClick={() => addToCart(item)}
+                        onClick={(e) => { e.stopPropagation(); addToCart(item); }}
                         className="w-full mt-3 bg-[#2D1B16] hover:bg-[#1A0E0A] text-white font-sans font-semibold text-[13px] sm:text-[14px] h-8 rounded-lg flex items-center justify-center gap-1.5"
                       >
                         <ShoppingCart className="w-3.5 h-3.5" /> Add to Cart
@@ -705,7 +760,7 @@ export default function HomePage() {
 
             {/* PHONE & TABLET LAYOUT (< lg) */}
             <div className="block lg:hidden">
-              <div className="relative w-full rounded-2xl overflow-hidden min-h-[270px] sm:min-h-[300px] mb-4 p-5 sm:p-6 flex flex-col justify-between shadow-sm border border-[#F0E4D8]/70 bg-[#1A0A06] group">
+              <div onClick={() => router.push(`/product/${featuredSpotlight.slug}`)} className="relative w-full rounded-2xl overflow-hidden min-h-[270px] sm:min-h-[300px] mb-4 p-5 sm:p-6 flex flex-col justify-between shadow-sm border border-[#F0E4D8]/70 bg-[#1A0A06] group cursor-pointer">
                 <img
                   src={getProductImage(featuredSpotlight)}
                   alt={featuredSpotlight.name}
@@ -715,7 +770,7 @@ export default function HomePage() {
 
                 <div className="relative z-10 flex items-center justify-between">
                   <span className="bg-[#A64B2A] text-white text-[10px] font-semibold px-2 py-0.5 rounded shadow-xs">
-                    {featuredSpotlight.discount_price ? 'Special Offer' : 'Bestseller'}
+                    {getSpotlightBadge(featuredSpotlight)}
                   </span>
                   <button
                     type="button"
@@ -766,18 +821,14 @@ export default function HomePage() {
                 {featuredCards.map((item) => {
                   const discount = getProductDiscountPercent(item)
                   return (
-                    <div key={item.id} className="w-[155px] sm:w-[175px] shrink-0 bg-white rounded-xl border border-[#E8C7AF]/60 p-2.5 flex flex-col justify-between shadow-2xs">
+                    <div key={item.id} onClick={() => router.push(`/product/${item.slug}`)} className="w-[155px] sm:w-[175px] shrink-0 bg-white rounded-xl border border-[#E8C7AF]/60 p-2.5 flex flex-col justify-between shadow-2xs cursor-pointer group">
                       <div>
                         <div className="relative aspect-square rounded-lg overflow-hidden bg-[#FAF2EB] mb-2">
                           <img src={getProductImage(item)} alt={item.name} className="w-full h-full object-cover" />
-                          {discount && (
-                            <span className="absolute top-1.5 left-1.5 z-10 bg-[#E53935] text-white text-[9px] font-semibold px-1.5 py-0.5 rounded shadow-xs">
-                              -{discount}%
-                            </span>
-                          )}
+                          {renderProductBadge(item)}
                           <button
                             type="button"
-                            onClick={() => toggleWishlist(item)}
+                            onClick={(e) => { e.stopPropagation(); toggleWishlist(item); }}
                             className="absolute top-1.5 right-1.5 z-10 w-6 h-6 rounded-full bg-white/90 text-neutral-600 flex items-center justify-center"
                             aria-label="Wishlist"
                           >
@@ -805,7 +856,7 @@ export default function HomePage() {
 
                       <Button
                         size="sm"
-                        onClick={() => addToCart(item)}
+                        onClick={(e) => { e.stopPropagation(); addToCart(item); }}
                         className="w-full mt-2 bg-[#2D1B16] text-white text-[11px] font-semibold h-7 rounded-lg flex items-center justify-center gap-1"
                       >
                         <ShoppingCart className="w-3 h-3" /> Add to Cart
@@ -873,8 +924,8 @@ export default function HomePage() {
                     </p>
 
                     <Button asChild className="bg-[#F8EEE4] hover:bg-white text-[#2D1B16] text-xs font-semibold h-10 px-5 rounded-full inline-flex items-center gap-1.5 shadow-sm mt-6">
-                      <Link href="/shop?filter=new-arrivals">
-                        Explore New Arrivals &rarr;
+                      <Link href="/shop?category=new-product">
+                        View All Products &rarr;
                       </Link>
                     </Button>
                   </div>
@@ -888,7 +939,7 @@ export default function HomePage() {
                 <div className="flex-1 min-w-0 flex flex-col justify-between">
                   <div className="grid grid-cols-4 gap-3.5 xl:gap-4">
                     {newArrivalCards.map((item) => (
-                      <div key={item.id} className="bg-white rounded-xl border border-white/10 p-3 flex flex-col justify-between text-[#2D1B16] hover:shadow-lg transition-all group">
+                      <div key={item.id} onClick={() => router.push(`/product/${item.slug}`)} className="bg-white rounded-xl border border-white/10 p-3 flex flex-col justify-between text-[#2D1B16] hover:shadow-lg transition-all group cursor-pointer">
                         <div>
                           <div className="relative aspect-square rounded-lg overflow-hidden bg-[#FAF2EB] mb-2.5">
                             <img src={getProductImage(item)} alt={item.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
@@ -897,7 +948,7 @@ export default function HomePage() {
                             </span>
                             <button
                               type="button"
-                              onClick={() => toggleWishlist(item)}
+                              onClick={(e) => { e.stopPropagation(); toggleWishlist(item); }}
                               className="absolute top-2 right-2 z-10 w-7 h-7 rounded-full bg-white/90 hover:bg-white text-neutral-600 flex items-center justify-center transition-all shadow-xs"
                               aria-label="Wishlist"
                             >
@@ -927,7 +978,7 @@ export default function HomePage() {
 
                         <Button
                           size="sm"
-                          onClick={() => addToCart(item)}
+                          onClick={(e) => { e.stopPropagation(); addToCart(item); }}
                           className="w-full mt-3 bg-[#2D1B16] hover:bg-[#1A0E0A] text-white text-xs font-semibold h-8 rounded-lg flex items-center justify-center gap-1.5"
                         >
                           <ShoppingCart className="w-3.5 h-3.5" /> Add to Cart
@@ -947,22 +998,22 @@ export default function HomePage() {
 
             {/* PHONE & TABLET VIEW (< lg) */}
             <div className="block lg:hidden">
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex items-end justify-between gap-3 mb-3.5 sm:mb-4">
                 <div>
-                  <span className="font-sans text-[11px] sm:text-[12px] font-semibold uppercase tracking-[0.16em] text-[#8C4B23] flex items-center gap-1.5 mb-1">
+                  <span className="font-sans text-[10px] sm:text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8C4B23] flex items-center gap-1.5 mb-0.5 sm:mb-1">
                     &mdash; FRESH TRENDS, NEW STORIES
                   </span>
-                  <h2 className="font-serif text-2xl font-bold text-[#2D1B16] leading-tight">
+                  <h2 className="font-serif text-[22px] sm:text-2xl font-bold text-[#2D1B16] leading-tight">
                     New <span className="text-[#C8845C]">Arrivals</span>
                   </h2>
-                  <p className="text-xs text-[#5A382B] mt-0.5">
+                  <p className="hidden sm:block text-xs text-[#5A382B] mt-0.5">
                     Be the first to explore our latest additions, curated just for you.
                   </p>
                 </div>
 
                 <Link
-                  href="/shop?filter=new-arrivals"
-                  className="text-xs font-semibold text-[#2D1B16] border border-[#2D1B16] px-3.5 py-1.5 rounded-full transition-colors flex items-center gap-1 shrink-0"
+                  href="/shop?category=new-product"
+                  className="text-[11.5px] sm:text-xs font-semibold text-[#2D1B16] border border-[#2D1B16]/30 hover:border-[#2D1B16] bg-white/60 hover:bg-[#2D1B16] hover:text-white px-3 sm:px-3.5 py-1.5 rounded-full transition-all flex items-center gap-1 shrink-0 self-end shadow-xs"
                 >
                   View All Products &rarr;
                 </Link>
@@ -983,7 +1034,7 @@ export default function HomePage() {
                     </span>
                     <button
                       type="button"
-                      onClick={() => toggleWishlist(newArrivalSpotlight)}
+                      onClick={(e) => { e.stopPropagation(); toggleWishlist(newArrivalSpotlight); }}
                       className="w-7 h-7 rounded-full bg-white/90 text-neutral-700 flex items-center justify-center"
                       aria-label="Wishlist"
                     >
@@ -1030,7 +1081,7 @@ export default function HomePage() {
               {/* Horizontal Scroller */}
               <div className="flex items-stretch gap-3 overflow-x-auto scroll-smooth hide-scrollbar pb-3 pt-1 -mx-3 px-3 sm:-mx-4 sm:px-4">
                 {newArrivalCards.slice(1).map((item) => (
-                  <div key={item.id} className="w-[155px] sm:w-[175px] shrink-0 bg-white rounded-xl border border-[#E8C7AF]/60 p-2.5 flex flex-col justify-between shadow-2xs">
+                  <div key={item.id} onClick={() => router.push(`/product/${item.slug}`)} className="w-[155px] sm:w-[175px] shrink-0 bg-white rounded-xl border border-[#E8C7AF]/60 p-2.5 flex flex-col justify-between shadow-2xs cursor-pointer group">
                     <div>
                       <div className="relative aspect-square rounded-lg overflow-hidden bg-[#FAF2EB] mb-2">
                         <img src={getProductImage(item)} alt={item.name} className="w-full h-full object-cover" />
@@ -1039,7 +1090,7 @@ export default function HomePage() {
                         </span>
                         <button
                           type="button"
-                          onClick={() => toggleWishlist(item)}
+                          onClick={(e) => { e.stopPropagation(); toggleWishlist(item); }}
                           className="absolute top-1.5 right-1.5 z-10 w-6 h-6 rounded-full bg-white/90 text-neutral-600 flex items-center justify-center"
                           aria-label="Wishlist"
                         >
@@ -1067,7 +1118,7 @@ export default function HomePage() {
 
                     <Button
                       size="sm"
-                      onClick={() => addToCart(item)}
+                      onClick={(e) => { e.stopPropagation(); addToCart(item); }}
                       className="w-full mt-2 bg-[#2D1B16] text-white text-[11px] font-semibold h-7 rounded-lg flex items-center justify-center gap-1"
                     >
                       <ShoppingCart className="w-3 h-3" /> Add to Cart
@@ -1164,7 +1215,8 @@ export default function HomePage() {
                 return (
                   <div
                     key={item.id}
-                    className="w-[155px] sm:w-[185px] md:w-[210px] lg:w-[calc(20%-13px)] shrink-0 bg-white rounded-2xl border border-[#F0E5DC] p-2.5 sm:p-3.5 flex flex-col justify-between shadow-2xs hover:shadow-md transition-all duration-300 group"
+                    onClick={() => router.push(`/product/${item.slug}`)}
+                    className="w-[155px] sm:w-[185px] md:w-[210px] lg:w-[calc(20%-13px)] shrink-0 bg-white rounded-2xl border border-[#F0E5DC] p-2.5 sm:p-3.5 flex flex-col justify-between shadow-2xs hover:shadow-md transition-all duration-300 group cursor-pointer"
                   >
                     <div>
                       {/* Product Image + Wishlist Button */}
@@ -1177,10 +1229,14 @@ export default function HomePage() {
                             loading="lazy"
                           />
                         </Link>
+                        {renderProductBadge(item)}
 
                         <button
                           type="button"
-                          onClick={() => toggleWishlist(item)}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            toggleWishlist(item)
+                          }}
                           className="absolute top-2 right-2 z-10 w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-white/95 hover:bg-white text-neutral-600 flex items-center justify-center transition-all shadow-xs active:scale-90"
                           aria-label="Wishlist"
                         >
@@ -1209,7 +1265,10 @@ export default function HomePage() {
 
                         <button
                           type="button"
-                          onClick={() => addToCart(item)}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            addToCart(item)
+                          }}
                           className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-[#FAF0E6] hover:bg-[#F3E2D3] text-[#5A382B] flex items-center justify-center transition-colors active:scale-95 shadow-2xs cursor-pointer"
                           aria-label="Add to cart"
                           title="Add to Cart"
