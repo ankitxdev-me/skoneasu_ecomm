@@ -1,289 +1,174 @@
-# LUXE JEWELS - Premium Luxury Jewelry Ecommerce Platform
+# 💎 SKONEASU — Premium Luxury Gifting Ecommerce Platform
 
-## 🎉 MVP BUILD COMPLETE!
+[![Next.js](https://img.shields.io/badge/Next.js-14.2-black?style=for-the-badge&logo=next.js)](https://nextjs.org/)
+[![Supabase](https://img.shields.io/badge/Supabase-Database%20%26%20Auth-3ECF8E?style=for-the-badge&logo=supabase)](https://supabase.com/)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.4-38B2AC?style=for-the-badge&logo=tailwind-css)](https://tailwindcss.com/)
+[![Razorpay](https://img.shields.io/badge/Razorpay-Payment_Gateway-02042B?style=for-the-badge&logo=razorpay)](https://razorpay.com/)
 
-A complete, production-ready ecommerce platform for luxury jewelry built with Next.js, Supabase, and Razorpay.
-
----
-
-## ⚠️ IMPORTANT: Complete Setup Required
-
-### 1. **Supabase Anon Key - ACTION REQUIRED**
-
-The Supabase `NEXT_PUBLIC_SUPABASE_ANON_KEY` in your `.env` file appears to be incomplete (it was truncated in your message).
-
-**To fix this:**
-1. Go to your Supabase project dashboard: https://ckuhiigwpjbnonvtuaav.supabase.co
-2. Navigate to Settings → API
-3. Copy the complete **anon/public** key
-4. Update `/app/.env` file with the complete key:
-
-```bash
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_complete_anon_key_here
-```
-
-5. Restart the server:
-```bash
-sudo supervisorctl restart nextjs
-```
-
-### 2. **Database Schema Setup**
-
-Execute the provided SQL schemas in your Supabase SQL Editor:
-
-#### Step 1: Main Schema
-Copy and execute the entire schema from your original message in Supabase SQL Editor
-
-#### Step 2: Demo Products
-Execute `/app/lib/seed-products.sql` in Supabase SQL Editor to add demo jewelry products
-
-### 3. **Razorpay Keys (Optional - Add Later)**
-
-Payment gateway is configured but inactive until you add keys:
-
-```bash
-RAZORPAY_KEY_ID=your_key_id
-RAZORPAY_KEY_SECRET=your_key_secret
-```
+**SKONEASU** is a modern, high-performance luxury gifting e-commerce platform crafted with Next.js App Router, Supabase PostgreSQL, and Tailwind CSS. Designed specifically for timeless gifting, it offers a refined brown-and-gold aesthetic, seamless shopping experiences, an integrated user dashboard, and a full-featured admin management panel.
 
 ---
 
-## 🏗️ Architecture
+## ✨ Key Features
 
-### **Tech Stack**
-- **Frontend**: Next.js 14 (App Router), React, Tailwind CSS
-- **Backend**: Next.js API Routes
-- **Database**: Supabase (PostgreSQL)
-- **Authentication**: Supabase Auth
-- **Payment**: Razorpay (ready for integration)
-- **UI Components**: shadcn/ui
-- **State Management**: React Context API
+### 🛍️ Storefront & Shopping Experience
+- **Luxury Aesthetic**: Rich curated color palette (`#2D1B16`, `#E8C7AF`, `#FAF2EB`), elegant typography, and smooth micro-interactions.
+- **Top Announcement Carousel**: 
+  - Desktop multi-segment announcement bar.
+  - Mobile swipeable, rotating announcement slider featuring free shipping notices, store highlights, and an integrated **Track Order | Help** link.
+- **Curated Collections**: Dedicated showcases for Him, Her, Luxury Gifts, and Festive Occasions.
+- **Real-Time Live Search**: Debounced instant search modal across products, titles, and categories.
+- **Dynamic Badge System**: Automatic badge assignment based on discount percentage:
+  - Calculated percentage (`-XX%`) for discounts under 30%.
+  - `SALE` badge for discounts between 30% and 49%.
+  - `SPECIAL OFFER` badge for discounts 50% and above.
+  - `NEW` badge for latest arrivals.
 
-### **Project Structure**
+### 📦 Product Details & Variants
+- **High-Resolution Galleries**: Multi-image product viewer with thumbnail navigation and zoom.
+- **Dynamic Variant System**: Custom variants (Size, Color, Material) with reactive price modifiers and stock checks.
+- **Customer Reviews**: Rating system with multi-image attachments, verified badges, and pinned reviews.
+
+### 💳 Cart, Checkout & Payments
+- **Persistent Cart & Wishlist**: Context-backed reactive states with drawer notifications.
+- **Coupon System**: Dynamic coupon code validation supporting both flat discounts and percentages with minimum order value checks.
+- **Dual Payment Modes**:
+  - **Razorpay Gateway**: Secure online card, UPI, netbanking, and wallet payments.
+  - **Cash on Delivery (COD)**: Seamless offline payment workflow with order verification.
+- **Automated Tax & Shipping**: Configurable tax rates, standard shipping, and free shipping thresholds.
+
+### 👤 User Account Dashboard (`/dashboard`)
+- **Sticky Side Navigation**: Persistent left menu that stays in view across all views without reloading.
+- **Profile Settings**: Update name, phone number, and account details.
+- **Address Book**: Add, edit, remove, and select default delivery addresses.
+- **Security**: Direct password change and credential updates.
+- **Inline My Orders**: Track past orders, view order status badges (`Paid`, `Pending`, `Shipped`, `Delivered`), items breakdown, and download invoices.
+- **Inline Wishlist**: Browse saved items with one-click "Add to Cart" and delete options.
+- **Inline Support Tickets**: View submitted tickets with status indicators (`Open`, `In Progress`, `Resolved`), priority levels, and open new requests.
+
+### 🛠️ Admin Management Panel (`/admin`)
+- **Products Management**: Full CRUD operations, variant creator, image uploads to Supabase Storage, and inventory stock tracking.
+- **Categories Management**: Organize store hierarchy, define main collections, and upload category banners.
+- **Orders Desk**: Real-time order monitoring, status workflow updates, customer shipping details, and invoice generation.
+- **Review Moderation**: Approve, reject, or pin standout customer reviews to the storefront.
+- **Coupons Engine**: Create discount campaigns with start/expiry dates, usage limits, and discount thresholds.
+- **Customer Support Desk**: Respond directly to customer tickets and manage ticket resolution lifecycle.
+- **Store Settings**: Configure store tax percentages, base shipping fees, free shipping qualifying limits, and social media links.
+
+---
+
+## 🏗️ Project Architecture
 
 ```
-/app/
-├── app/
-│   ├── api/[[...path]]/route.js    # Complete backend API
-│   ├── page.js                     # Homepage
-│   ├── layout.js                   # Root layout with providers
-│   └── globals.css                 # Global styles
-├── components/
-│   ├── Header.js                   # Navigation header
-│   ├── Footer.js                   # Footer component
-│   └── ui/                         # shadcn components
-├── contexts/
-│   ├── AuthContext.js              # Authentication context
-│   └── CartContext.js              # Cart state management
-├── lib/
-│   ├── supabase.js                 # Supabase client
-│   ├── api.js                      # API client functions
-│   ├── razorpay.js                 # Razorpay utilities
-│   └── seed-products.sql           # Demo products SQL
-└── .env                            # Environment variables
+singleapp/
+├── app/                        # Next.js 14 App Router
+│   ├── admin/                  # Admin panel routes (products, orders, reviews, coupons, support)
+│   ├── api/                    # Route handlers (REST endpoints, Razorpay, Supabase service-role)
+│   ├── auth/                   # Signin, signup, forgot-password, update-password
+│   ├── checkout/               # Multi-step checkout with address selection & payment
+│   ├── dashboard/              # User dashboard with fixed sidebar (orders, wishlist, tickets)
+│   ├── orders/                 # Order details and invoice generation
+│   ├── product/[slug]/         # Dynamic product details page
+│   ├── shop/                   # Catalog with multi-faceted filtering and sorting
+│   ├── support/                # Customer support ticket creation and discussion
+│   └── page.js                 # High-converting storefront homepage
+├── components/                 # Reusable UI & business components
+│   ├── ui/                     # Radix UI / shadcn/ui components (cards, dialogs, buttons, etc.)
+│   ├── Header.js               # Responsive header, rotating announcement, navigation drawers
+│   ├── Footer.js               # Footer with developer channels, policies, and newsletter
+│   └── ProductCard.js          # Product card with dynamic badge calculations and quick cart
+├── contexts/                   # React Contexts (AuthContext, CartContext, WishlistContext)
+├── hooks/                      # Custom hooks (mobile detection, toast triggers)
+├── lib/                        # Core utilities & API wrappers
+│   ├── api.js                  # Frontend API client for all backend endpoints
+│   ├── razorpay.js             # Razorpay server SDK initialization
+│   ├── schema.sql              # Master PostgreSQL database schema
+│   ├── supabase.js             # Supabase client (anon key)
+│   ├── supabase-admin.js       # Supabase client (service-role key)
+│   └── utils.js                # Tailwind class merge helper (cn)
+└── public/                     # Static media, luxury banners, and icons
 ```
-
----
-
-## ✨ Features Implemented
-
-### **Customer Features**
-✅ User authentication (email/password + magic link ready)
-✅ Browse products by category
-✅ Advanced product filters (price, category, search)
-✅ Product detail pages with image gallery
-✅ Shopping cart with real-time updates
-✅ Wishlist functionality
-✅ Secure checkout process
-✅ Order tracking and history
-✅ User dashboard (profile, orders, addresses)
-✅ Product reviews and ratings
-✅ Coupon/discount system
-✅ Responsive mobile-first design
-
-### **Admin Features**
-✅ Admin dashboard with analytics
-✅ Product management (CRUD)
-✅ Category management
-✅ Order management and status updates
-✅ Inventory control
-✅ Coupon management
-✅ Customer list view
-✅ Sales statistics
-
-### **Security**
-✅ Supabase Row Level Security (RLS) policies
-✅ Role-based access control (user/admin)
-✅ Secure payment verification
-✅ Protected admin routes
-✅ Server-side validation
-
----
-
-## 🎨 Design System
-
-**Luxury Jewelry Aesthetic:**
-- Soft neutral palette (ivory, beige, gold accents)
-- Premium typography (Inter + Playfair Display)
-- Generous white space
-- Smooth hover animations
-- Mobile-responsive layouts
-
----
-
-## 📡 API Endpoints
-
-### Authentication
-- `POST /api/auth/signup` - Register new user
-- `POST /api/auth/signin` - User login
-- `POST /api/auth/signout` - User logout
-- `GET /api/profile` - Get user profile
-- `PUT /api/profile` - Update profile
-
-### Products
-- `GET /api/products` - List products (with filters)
-- `GET /api/products/slug/:slug` - Get product by slug
-- `GET /api/categories` - List categories
-- `GET /api/categories/:slug` - Get category by slug
-
-### Cart
-- `GET /api/cart` - Get user cart
-- `POST /api/cart` - Add to cart
-- `PUT /api/cart/:id` - Update cart item
-- `DELETE /api/cart/:id` - Remove from cart
-- `DELETE /api/cart/clear` - Clear cart
-
-### Wishlist
-- `GET /api/wishlist` - Get wishlist
-- `POST /api/wishlist` - Add to wishlist
-- `DELETE /api/wishlist/:productId` - Remove from wishlist
-
-### Orders
-- `GET /api/orders` - List user orders
-- `GET /api/orders/:id` - Get order details
-- `POST /api/orders/create` - Create new order
-- `POST /api/orders/verify-payment` - Verify Razorpay payment
-
-### Admin (Protected)
-- `GET /api/admin/products` - List all products
-- `POST /api/admin/products` - Create product
-- `PUT /api/admin/products/:id` - Update product
-- `DELETE /api/admin/products/:id` - Delete product
-- `GET /api/admin/orders` - List all orders
-- `PUT /api/admin/orders/:id` - Update order status
-- `GET /api/admin/stats` - Get dashboard statistics
 
 ---
 
 ## 🚀 Getting Started
 
-### 1. Fix Supabase Key
-Update the complete anon key in `/app/.env`
+### 1. Prerequisites
+- **Node.js**: `v18.17.0` or higher
+- **npm**: `v9.0.0` or higher
+- **Supabase Account**: A Supabase project with database & storage buckets enabled
+- **Razorpay Account**: Razorpay test/live API credentials
 
-### 2. Run Database Schemas
-Execute both SQL files in Supabase SQL Editor
+### 2. Installation
 
-### 3. Restart Server
+Clone the repository and install dependencies:
+
 ```bash
-sudo supervisorctl restart nextjs
+git clone https://github.com/ankit-gupta77/skoneasu_ecomm.git
+cd skoneasu_ecomm
+npm install
 ```
 
-### 4. Access the Application
-- **Frontend**: https://jewelsuite-1.preview.emergentagent.com
-- **Local**: http://localhost:3000
+### 3. Environment Variables
 
-### 5. Create Admin User
-After signing up, manually update your user role in Supabase:
-```sql
-UPDATE profiles SET role = 'admin' WHERE email = 'your-email@example.com';
+Create a `.env` file in the project root:
+
+```env
+# Supabase Configuration
+NEXT_PUBLIC_SUPABASE_URL=https://your-project-id.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+
+# Razorpay Configuration
+RAZORPAY_KEY_ID=your_razorpay_key_id
+RAZORPAY_KEY_SECRET=your_razorpay_key_secret
+
+# Application URL
+NEXT_PUBLIC_APP_URL=http://localhost:3001
 ```
 
----
+### 4. Database Setup
 
-## 🔄 Next Steps
+1. Open your **Supabase Dashboard** and navigate to the **SQL Editor**.
+2. Open [`lib/schema.sql`](./lib/schema.sql) in this repository.
+3. Paste the contents into the SQL Editor and click **Run**.
+4. In **Supabase Storage**, ensure two public buckets exist:
+   - `product-images` (Public access enabled)
+   - `review-images` (Public access enabled)
 
-### Immediate (Required)
-1. ✅ Add complete Supabase anon key
-2. ✅ Execute database schemas
-3. ✅ Test user registration and login
+### 5. Running the Application
 
-### Payment Integration (When Ready)
-1. Add Razorpay API keys to `.env`
-2. Test payment flow end-to-end
-3. Configure Razorpay webhooks for production
+Start the development server:
 
-### Optional Enhancements
-- Add email notifications (Resend/SendGrid)
-- Integrate WhatsApp chat widget
-- Add Google Analytics & Meta Pixel
-- Upload real product images to Supabase Storage
-- Configure custom domain
+```bash
+npm run dev
+```
+
+Open [http://localhost:3001](http://localhost:3001) in your browser.
 
 ---
 
-## 📊 Database Schema Highlights
+## 👑 Assigning Admin Role
 
-### Core Tables
-- **profiles** - User profiles with roles
-- **categories** - Product categories
-- **products** - Product catalog with pricing
-- **product_images** - Multiple images per product
-- **product_variants** - Size/material variants
-- **cart_items** - User shopping carts
-- **wishlists** - User wishlists
-- **orders** - Order management with status
-- **order_items** - Order line items
-- **coupons** - Discount codes
-- **reviews** - Product reviews & ratings
-- **addresses** - User shipping addresses
-
-### Security
-- Row Level Security (RLS) enabled on all tables
-- Users can only access their own data
-- Admin role bypasses restrictions
-- Proper foreign keys and indexes
+To grant admin privileges to any user:
+1. Register an account through `/auth/signup`.
+2. Go to **Supabase Dashboard** &rarr; **Table Editor** &rarr; `profiles`.
+3. Locate your user record and change the `role` column value from `customer` to `admin`.
+4. Refresh your session; the **Admin Dashboard** option will now appear in your account menu.
 
 ---
 
-## 🎯 Current Status
+## 📦 Scripts
 
-### ✅ Complete
-- Full backend API with all endpoints
-- Premium luxury frontend UI
-- Authentication system
-- Cart and wishlist functionality
-- Order management
-- Admin dashboard
-- Database schema and RLS policies
-- Demo products ready to seed
-
-### ⚠️ Pending
-- Complete Supabase anon key
-- Database schema execution
-- Razorpay keys (when ready)
-- Email service integration (when ready)
+| Command | Description |
+| :--- | :--- |
+| `npm run dev` | Starts the Next.js development server on port 3001 |
+| `npm run build` | Builds the production bundle |
+| `npm run start` | Starts the production server |
+| `npm run lint` | Runs ESLint to check for code quality |
 
 ---
 
-## 📞 Support
+## 🛡️ License
 
-If you encounter any issues:
-1. Check Supabase connection with complete anon key
-2. Verify database schemas are executed
-3. Check browser console for errors
-4. Review API responses in Network tab
-
----
-
-## 🎨 Design Inspiration
-
-The design is inspired by premium jewelry brands like:
-- Moshika Jewels
-- KB Jewels
-- Brilliant Earth
-
-Featuring elegant aesthetics, trust indicators, and premium UX patterns.
-
----
-
-**Built with ❤️ for luxury jewelry ecommerce**
+This project is private and proprietary. All rights reserved.

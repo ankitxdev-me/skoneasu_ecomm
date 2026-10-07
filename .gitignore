@@ -36,6 +36,7 @@ dist
 .env.*
 !.env.example
 **/*.sql
+!lib/schema.sql
 *token.json*
 *credentials.json*
 
